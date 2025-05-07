@@ -77,21 +77,11 @@
     "afterPack": "./resources/afterPack.js",
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "AppImage"
       ],
       "category": "Utility",
       "executableName": "oven-control",
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "extraResources": [
-        "resources/**"
-      ],
-      "maintainer": "MJB <mjb@example.com>"
-    },
-    "deb": {
-      "fpm": [
-        "--after-install=./resources/install-native-modules.sh"
-      ]
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
       "target": "portable",
