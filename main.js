@@ -63,7 +63,7 @@ function createWindow(filePath, width, height) {
         },
         autoHideMenuBar: true,  // Auto-hide the menu bar
         menuBarVisible: false,  // Make the menu bar initially hidden
-        icon: path.join(__dirname, 'icon.png')
+        icon: path.join(__dirname, 'build/icon.png')
     });
 
     // Remove menu bar completely

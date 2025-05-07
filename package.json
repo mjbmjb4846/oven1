@@ -78,11 +78,18 @@
     "afterPack": "./resources/afterPack.js",
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
       "category": "Utility",
       "executableName": "oven-control",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "icon": "build/icon.png",
+      "desktop": {
+        "Name": "Oven Control",
+        "Comment": "Raspberry Pi Oven Control System",
+        "StartupWMClass": "oven-control"
+      }
     },
     "win": {
       "target": "portable",

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Oven Control
+Comment=Raspberry Pi Oven Control System
+Exec=/usr/bin/oven-control --no-sandbox
+Icon=oven-control
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupWMClass=oven-control
