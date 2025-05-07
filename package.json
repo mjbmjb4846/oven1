@@ -23,7 +23,8 @@
     "prepare-orange": "node scripts/prepare-orange.js",
     "build:arm": "node scripts/prepare-native-modules.js --armv7l && npm run dist:pi-armv7l",
     "build:arm64": "node scripts/prepare-native-modules.js --arm64 && npm run dist:pi-arm64",
-    "build:orangepi": "node scripts/prepare-native-modules.js --arm64 && npm run dist:orangepi"
+    "build:orangepi": "node scripts/prepare-native-modules.js --arm64 && npm run dist:orangepi",
+    "dist:linux-deb": "electron-builder --linux --x64 -c.linux.target=deb"
   },
   "author": {
     "name": "MJB",
