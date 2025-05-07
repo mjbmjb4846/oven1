@@ -1,0 +1,109 @@
+{
+  "name": "oven1",
+  "version": "0.1.0",
+  "description": "Oven Interface Version 1",
+  "main": "main.js",
+  "homepage": "https://github.com/yourusername/oven1",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "electron-builder --win --x64",
+    "dist:mac": "electron-builder --mac --x64",
+    "dist:linux": "electron-builder --linux --x64",
+    "dist:pi": "cross-env TARGET_ARCH=arm64 electron-builder --linux arm64 --armv7l",
+    "dist:pi-arm64": "cross-env TARGET_ARCH=arm64 electron-builder --linux --arm64 -c.linux.target=deb",
+    "dist:pi-armv7l": "cross-env TARGET_ARCH=armv7l electron-builder --linux --armv7l -c.linux.target=deb",
+    "dist:orangepi": "cross-env TARGET_ARCH=arm64 electron-builder --linux --arm64 -c.linux.target=deb",
+    "dist:all": "electron-builder --win --x64 --mac --x64 --linux --x64",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dist:no-sign": "electron-builder --win --x64 --publish=never",
+    "dist:pi-no-native": "cross-env USE_SYSTEM_EPOLL=true electron-builder --linux --arm64 --armv7l",
+    "prepare-pi": "node scripts/prepare-pi.js",
+    "prepare-orange": "node scripts/prepare-orange.js",
+    "build:arm": "node scripts/prepare-native-modules.js --armv7l && npm run dist:pi-armv7l",
+    "build:arm64": "node scripts/prepare-native-modules.js --arm64 && npm run dist:pi-arm64",
+    "build:orangepi": "node scripts/prepare-native-modules.js --arm64 && npm run dist:orangepi"
+  },
+  "author": {
+    "name": "MJB",
+    "email": "mjb@example.com"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^36.1.0",
+    "electron-builder": "^24.9.1",
+    "electron-rebuild": "^3.2.9"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "onoff": "^6.0.3",
+    "rpio": "^2.4.2",
+    "node-orange-pi-gpio": "^1.0.0",
+    "wiring-op": "^1.0.0"
+  },
+  "optionalDependencies": {
+    "node-orange-pi-gpio": "^1.0.0",
+    "wiring-op": "^1.0.0"
+  },
+  "build": {
+    "appId": "com.rpi.ovencontrol",
+    "productName": "RPi Oven Control",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": false,
+    "files": [
+      "**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/install-native-modules.sh",
+        "to": "install-native-modules.sh"
+      }
+    ],
+    "afterPack": "./resources/afterPack.js",
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "executableName": "oven-control",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "extraResources": [
+        "resources/**"
+      ],
+      "maintainer": "MJB <mjb@example.com>"
+    },
+    "deb": {
+      "fpm": [
+        "--after-install=./resources/install-native-modules.sh"
+      ]
+    },
+    "win": {
+      "target": "portable",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": "dmg",
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "electronDist": null,
+    "npmRebuild": false,
+    "beforeBuild": "./scripts/prepare-native-modules.js"
+  }
+}

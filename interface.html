@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raspberry Pi Oven Control</title>
+    <link rel="stylesheet" href="global.css">
+</head>
+<body>
+    <!-- Simulation indicator - Only visible when not running on Raspberry Pi -->
+    <div id="simulation-indicator" class="simulation-indicator" style="display: none;">SIMULATION</div>
+    
+    <div class="container">
+        <div class="panel display-panel">
+            <h1>Oven Control System</h1>
+            
+            <div class="temperature-display">
+                <span id="current-temp">25</span>°C
+            </div>
+            
+            <div class="control-group">
+                <h3>Temperature Control</h3>
+                <div class="control-item">
+                    <span>Target Temperature</span>
+                    <input type="range" class="range-slider" id="temp-slider" min="25" max="300" value="150">
+                    <span class="range-value" id="temp-value">150°C</span>
+                </div>
+                <div class="control-item">
+                    <span>Heating Elements</span>
+                    <label class="switch">
+                        <input type="checkbox" id="heating-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Steam Control</h3>
+                <div class="control-item">
+                    <span>Steam Level</span>
+                    <input type="range" class="range-slider" id="steam-slider" min="0" max="100" value="0">
+                    <span class="range-value" id="steam-value">0%</span>
+                </div>
+                <div class="control-item">
+                    <span>Solenoid Valve</span>
+                    <label class="switch">
+                        <input type="checkbox" id="solenoid-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Fan Control</h3>
+                <div class="control-item">
+                    <span>Fan Speed</span>
+                    <input type="range" class="range-slider" id="fan-slider" min="0" max="100" value="0">
+                    <span class="range-value" id="fan-value">0%</span>
+                </div>
+                <div class="control-item">
+                    <span>Fan Power</span>
+                    <label class="switch">
+                        <input type="checkbox" id="fan-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="graph-container">
+                <canvas id="temp-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel controls-panel">
+            <div class="control-group">
+                <h3>System Status</h3>
+                <div class="recording-control">
+                    <label for="recording-interval">Recording Interval (sec):</label>
+                    <input type="number" id="recording-interval" min="1" value="5">
+                </div>
+                <div class="recording-status">
+                    <div class="indicator"></div>
+                    <span id="recording-status-text">Not recording</span>
+                </div>
+                <div class="control-item">
+                    <span><span class="status-indicator" id="heating-status"></span>Heating</span>
+                    <span id="heating-state">OFF</span>
+                </div>
+                <div class="control-item">
+                    <span><span class="status-indicator" id="fan-status"></span>Fan</span>
+                    <span id="fan-state">OFF</span>
+                </div>
+                <div class="control-item">
+                    <span><span class="status-indicator" id="steam-status"></span>Steam</span>
+                    <span id="steam-state">OFF</span>
+                </div>
+                <div class="control-item" style="justify-content: center; margin-top: 15px;">
+                    <button class="button primary" id="start-btn">Start</button>
+                    <button class="button danger" id="stop-btn">Stop</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Pressure Sensor</h3>
+                <div class="control-item">
+                    <span>Current Pressure</span>
+                    <span id="pressure-value">0.0 kPa</span>
+                </div>
+                <div class="gauge">
+                    <div class="gauge-fill" id="pressure-gauge" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Presets</h3>
+                <div id="presets-container" class="preset-container">
+                    <!-- Presets will be dynamically generated here -->
+                </div>
+                <div class="control-item" style="justify-content: flex-end; margin-top: 10px;">
+                    <button class="button" id="save-preset-btn">Save as Preset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu for Presets -->
+    <div id="context-menu" class="context-menu">
+        <div class="context-menu-item" id="edit-preset">Edit Preset</div>
+        <div class="context-menu-item" id="delete-preset">Delete Preset</div>
+    </div>
+
+    <!-- Preset Dialog Modal -->
+    <div id="preset-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3 id="modal-title">Save Preset</h3>
+            <div class="form-group">
+                <label for="preset-name">Preset Name:</label>
+                <input type="text" id="preset-name" placeholder="Enter preset name">
+            </div>
+            <div class="form-group">
+                <label for="preset-description">Description (optional):</label>
+                <input type="text" id="preset-description" placeholder="Enter description">
+            </div>
+            <div class="modal-actions">
+                <button class="button" id="cancel-preset">Cancel</button>
+                <button class="button primary" id="confirm-preset">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "oven1",
+  "version": "0.1.0",
+  "description": "Oven Interface Version 1 - Raspberry Pi Version",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-rebuild"
+  },
+  "author": "MJB",
+  "license": "ISC",
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "onoff": "^6.0.3",
+    "epoll": "^4.0.2"
+  },
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9"
+  }
+}
