@@ -60,8 +60,13 @@ function createWindow(filePath, width, height) {
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
-        }
+        },
+        autoHideMenuBar: true,  // Auto-hide the menu bar
+        menuBarVisible: false    // Make the menu bar initially hidden
     });
+
+    // Remove menu bar completely
+    win.setMenu(null);
 
     if (!width || !height) {
         win.maximize();
