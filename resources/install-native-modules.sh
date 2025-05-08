@@ -20,6 +20,59 @@ if [ -f "/sys/class/sunxi_info/sys_info" ]; then
   echo "Detected Orange Pi board"
 fi
 
+# Setup GPIO permissions - this is critical for non-root access
+echo "Setting up GPIO permissions..."
+if [ "$BOARD_TYPE" = "raspberry-pi" ]; then
+  # Create gpio group if it doesn't exist
+  if ! getent group gpio > /dev/null; then
+    echo "Creating gpio group..."
+    sudo groupadd -f gpio
+  fi
+  
+  # Add current user to gpio group
+  echo "Adding user to gpio group..."
+  sudo usermod -a -G gpio $USER
+  
+  # Set up udev rules for GPIO access
+  if [ ! -f "/etc/udev/rules.d/99-gpio.rules" ]; then
+    echo "Creating udev rules for GPIO access..."
+    echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", ACTION=="add", PROGRAM="/bin/sh -c '\''chown root:gpio /dev/%k; chmod 0660 /dev/%k'\''"' | sudo tee /etc/udev/rules.d/99-gpio.rules > /dev/null
+    echo 'SUBSYSTEM=="gpio", KERNEL=="gpio*", ACTION=="add", PROGRAM="/bin/sh -c '\''chown root:gpio /sys/class/gpio/export /sys/class/gpio/unexport ; chmod 0220 /sys/class/gpio/export /sys/class/gpio/unexport'\''"' | sudo tee -a /etc/udev/rules.d/99-gpio.rules > /dev/null
+    echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", ACTION=="add", PROGRAM="/bin/sh -c '\''chown root:gpio /dev/%k; chmod 0660 /dev/%k'\''"' | sudo tee -a /etc/udev/rules.d/99-gpio.rules > /dev/null
+    echo 'SUBSYSTEM=="gpio", KERNEL=="gpio*", ACTION=="add", PROGRAM="/bin/sh -c '\''chown root:gpio /sys/class/gpio/gpio$number/active_low /sys/class/gpio/gpio$number/direction /sys/class/gpio/gpio$number/edge /sys/class/gpio/gpio$number/value ; chmod 0660 /sys/class/gpio/gpio$number/active_low /sys/class/gpio/gpio$number/direction /sys/class/gpio/gpio$number/edge /sys/class/gpio/gpio$number/value'\''"' | sudo tee -a /etc/udev/rules.d/99-gpio.rules > /dev/null
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+  fi
+  
+  # Set permissions for existing GPIO exports
+  echo "Setting permissions for existing GPIO exports..."
+  sudo chmod -R a+rw /sys/class/gpio || echo "Warning: Could not set permissions on /sys/class/gpio"
+  sudo chmod -R a+rw /dev/gpiomem 2>/dev/null || echo "Warning: Could not set permissions on /dev/gpiomem"
+  
+  # Load required kernel modules
+  echo "Loading required kernel modules..."
+  sudo modprobe -q i2c-dev || echo "Warning: Could not load i2c-dev module"
+  sudo modprobe -q spi-bcm2835 || echo "Warning: Could not load spi-bcm2835 module"
+  sudo modprobe -q w1-gpio || echo "Warning: Could not load w1-gpio module"
+  sudo modprobe -q w1-therm || echo "Warning: Could not load w1-therm module"
+elif [ "$BOARD_TYPE" = "orange-pi" ]; then
+  # Similar setup for Orange Pi
+  if ! getent group gpio > /dev/null; then
+    sudo groupadd -f gpio
+  fi
+  
+  sudo usermod -a -G gpio $USER
+  
+  # Orange Pi specific permissions
+  sudo chmod -R a+rw /sys/class/gpio || echo "Warning: Could not set permissions on /sys/class/gpio"
+  sudo chmod -R a+rw /dev/gpiomem 2>/dev/null || echo "Warning: Could not set permissions on /dev/gpiomem"
+  
+  # Load required modules for Orange Pi
+  sudo modprobe -q spidev || echo "Warning: Could not load spidev module"
+  sudo modprobe -q w1-gpio || echo "Warning: Could not load w1-gpio module"
+  sudo modprobe -q w1-therm || echo "Warning: Could not load w1-therm module"
+fi
+
 # Install appropriate modules based on board type
 echo "Installing native GPIO modules for $BOARD_TYPE..."
 
@@ -38,4 +91,13 @@ echo "Installing general GPIO modules..."
 npm install --no-save rpio
 
 echo "Native module installation complete!"
+
+# Inform the user about the need to log out and back in
+echo ""
+echo "=========================================================================="
+echo "IMPORTANT: You need to log out and log back in for the GPIO permissions"
+echo "to take effect. Otherwise, you may need to run the application as root."
+echo "=========================================================================="
+echo ""
+
 exit 0

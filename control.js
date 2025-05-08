@@ -130,33 +130,101 @@ function createSysFsGpio(pin, direction) {
   try {
     // Export the GPIO if not already exported
     if (!fs.existsSync(gpioPath)) {
-      fs.writeFileSync('/sys/class/gpio/export', pin.toString());
-      // Give the system time to create the GPIO files
-      execSync('sleep 0.1');
+      try {
+        fs.writeFileSync('/sys/class/gpio/export', pin.toString());
+        // Give the system time to create the GPIO files
+        execSync('sleep 0.1');
+      } catch (exportErr) {
+        console.error(`Permission denied when exporting GPIO ${pin}. This is usually a permissions issue.`);
+        console.log(`Please run 'sudo chmod -R a+rw /sys/class/gpio' or run the application with sudo`);
+        
+        // Try with sudo if normal export fails
+        try {
+          execSync(`echo ${pin} | sudo tee /sys/class/gpio/export`);
+          // Give the system time to create the GPIO files
+          execSync('sleep 0.5');
+        } catch (sudoErr) {
+          throw new Error(`Failed to export GPIO ${pin} even with sudo`);
+        }
+      }
     }
     
     // Set direction
-    fs.writeFileSync(`${gpioPath}/direction`, direction);
+    try {
+      fs.writeFileSync(`${gpioPath}/direction`, direction);
+    } catch (dirErr) {
+      console.error(`Permission denied when setting direction for GPIO ${pin}`);
+      try {
+        execSync(`echo ${direction} | sudo tee ${gpioPath}/direction`);
+      } catch (sudoDirErr) {
+        throw new Error(`Failed to set direction for GPIO ${pin}`);
+      }
+    }
     
     return {
       pin,
       writeSync: (value) => {
-        fs.writeFileSync(`${gpioPath}/value`, value.toString());
+        try {
+          fs.writeFileSync(`${gpioPath}/value`, value.toString());
+          return true;
+        } catch (error) {
+          console.error(`Failed to write to GPIO ${pin}:`, error.message);
+          // Try with sudo as a last resort
+          try {
+            execSync(`echo ${value} | sudo tee ${gpioPath}/value > /dev/null`);
+            console.log(`Used sudo to set GPIO ${pin} to ${value}`);
+            return true;
+          } catch (sudoError) {
+            console.error(`Failed to set GPIO ${pin} even with sudo:`, sudoError.message);
+            return false;
+          }
+        }
       },
       readSync: () => {
-        return parseInt(fs.readFileSync(`${gpioPath}/value`, 'utf8').trim());
+        try {
+          return parseInt(fs.readFileSync(`${gpioPath}/value`, 'utf8').trim());
+        } catch (error) {
+          console.error(`Failed to read from GPIO ${pin}:`, error.message);
+          // Try with sudo as a last resort
+          try {
+            return parseInt(execSync(`sudo cat ${gpioPath}/value`).toString().trim());
+          } catch (sudoError) {
+            console.error(`Failed to read GPIO ${pin} even with sudo:`, sudoError.message);
+            return -1;
+          }
+        }
       },
       unexport: () => {
         try {
           fs.writeFileSync('/sys/class/gpio/unexport', pin.toString());
         } catch (error) {
-          console.error(`Failed to unexport GPIO ${pin}:`, error);
+          console.error(`Failed to unexport GPIO ${pin}:`, error.message);
+          // Try with sudo
+          try {
+            execSync(`echo ${pin} | sudo tee /sys/class/gpio/unexport > /dev/null`);
+          } catch (sudoErr) {
+            // Just log the error, don't throw
+            console.error(`Failed to unexport GPIO ${pin} even with sudo:`, sudoErr.message);
+          }
         }
       }
     };
   } catch (error) {
     console.error(`Failed to setup GPIO ${pin} with sysfs:`, error);
-    return null;
+    return {
+      pin,
+      writeSync: (value) => { 
+        console.log(`Simulating GPIO ${pin} write: ${value}`); 
+        return false; 
+      },
+      readSync: () => { 
+        console.log(`Simulating GPIO ${pin} read`); 
+        return -1; 
+      },
+      unexport: () => { 
+        console.log(`Simulating GPIO ${pin} unexport`); 
+      }
+    };
   }
 }
 
