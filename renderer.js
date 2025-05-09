@@ -380,11 +380,8 @@ fanToggle.addEventListener('change', () => {
     const isOn = fanToggle.checked;
     updateFanStatus(isOn);
     
-    if (!isOn) {
-        fanSlider.value = 0;
-        fanValue.textContent = '0%';
-        fanSpeed = 0;
-    }
+    // Remove the code that resets the slider value to 0
+    // Keep the current slider position even when toggled off
     
     ipcRenderer.send('set-fan', isOn ? fanSpeed : 0);
 });
@@ -441,6 +438,9 @@ function startSystem() {
         ipcRenderer.send('set-solenoid', true);
         ipcRenderer.send('set-steam-level', steamValue);
     }
+    
+    // Explicitly set heating elements on
+    ipcRenderer.send('set-heating', true);
     
     ipcRenderer.send('start-system');
     

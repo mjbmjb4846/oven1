@@ -20,6 +20,12 @@ if [ -f "/sys/class/sunxi_info/sys_info" ]; then
   echo "Detected Orange Pi board"
 fi
 
+# Create needed directories
+echo "Creating necessary directories..."
+mkdir -p "$HOME/Downloads"
+sudo mkdir -p /root/Downloads
+sudo chmod a+rwx /root/Downloads
+
 # Setup GPIO permissions - this is critical for non-root access
 echo "Setting up GPIO permissions..."
 if [ "$BOARD_TYPE" = "raspberry-pi" ]; then
@@ -48,6 +54,10 @@ if [ "$BOARD_TYPE" = "raspberry-pi" ]; then
   echo "Setting permissions for existing GPIO exports..."
   sudo chmod -R a+rw /sys/class/gpio || echo "Warning: Could not set permissions on /sys/class/gpio"
   sudo chmod -R a+rw /dev/gpiomem 2>/dev/null || echo "Warning: Could not set permissions on /dev/gpiomem"
+  
+  # Create symlinks to make module loading more flexible
+  echo "Creating GPIO device symlinks..."
+  sudo ln -sf /sys/class/gpio /dev/gpio 2>/dev/null || echo "Warning: Could not create GPIO symlink"
   
   # Load required kernel modules
   echo "Loading required kernel modules..."
@@ -78,6 +88,23 @@ echo "Installing native GPIO modules for $BOARD_TYPE..."
 
 cd "$(dirname "$0")/.."
 
+# Make launcher script executable
+if [ -f "$(dirname "$0")/oven-control.sh" ]; then
+  echo "Setting launcher script as executable..."
+  chmod +x "$(dirname "$0")/oven-control.sh"
+fi
+
+# Set installation flag to use 32-bit modules on armv7l
+if [ "$(uname -m)" = "armv7l" ]; then
+  echo "Setting up for ARM 32-bit architecture"
+  export npm_config_arch=armv7l
+  export npm_config_target_arch=armv7l
+elif [ "$(uname -m)" = "aarch64" ]; then
+  echo "Setting up for ARM 64-bit architecture"
+  export npm_config_arch=arm64
+  export npm_config_target_arch=arm64
+fi
+
 if [ "$BOARD_TYPE" = "raspberry-pi" ]; then
   echo "Installing Raspberry Pi specific modules..."
   npm install --no-save onoff epoll
@@ -89,6 +116,22 @@ fi
 # Install general modules that work on any board
 echo "Installing general GPIO modules..."
 npm install --no-save rpio
+
+# Add desktop shortcut for launcher script
+if [ -d "/usr/share/applications" ]; then
+  echo "Creating desktop shortcut..."
+  cat > /tmp/oven-control.desktop << EOF
+[Desktop Entry]
+Name=Oven Control
+Comment=Raspberry Pi Oven Control System
+Exec=$(dirname "$0")/oven-control.sh
+Icon=/opt/RPi Oven Control/resources/icon.png
+Terminal=false
+Type=Application
+Categories=Utility;
+EOF
+  sudo mv /tmp/oven-control.desktop /usr/share/applications/
+fi
 
 echo "Native module installation complete!"
 

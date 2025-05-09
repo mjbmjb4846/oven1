@@ -69,11 +69,11 @@ function detectBoardType() {
 // Define GPIO pins mapping for different boards
 const PIN_MAPPINGS = {
   'raspberry-pi': {
-    FAN_CONTROL: 17,
-    HEATING_ELEMENTS: [22, 23, 24],
-    SOLENOID_VALVE: 18,
-    PRESSURE_SENSOR: 0, // ADC channel
-    TEMP_PROBE: 4
+    FAN_CONTROL: 17,       // BCM 17 = Physical Pin 11
+    HEATING_ELEMENTS: [22, 23, 24], // BCM 22, 23, 24 = Physical Pins 15, 16, 18
+    SOLENOID_VALVE: 18,    // BCM 18 = Physical Pin 12
+    PRESSURE_SENSOR: 0,    // ADC channel
+    TEMP_PROBE: 4          // BCM 4 = Physical Pin 7 (for DS18B20 1-Wire)
   },
   'orange-pi': {
     // Orange Pi Zero 3 pin mapping (adjusted for H618 SoC)
@@ -101,6 +101,40 @@ const PIN_MAPPINGS = {
   }
 };
 
+// Helper function to convert between BCM and physical pin numbers for Raspberry Pi
+// This helps users connect hardware correctly
+const RPI_BCM_TO_PHYSICAL = {
+  2: 3,   // I2C SDA
+  3: 5,   // I2C SCL
+  4: 7,   // 1-Wire
+  17: 11, // Fan control
+  18: 12, // Solenoid
+  22: 15, // Heating element 1
+  23: 16, // Heating element 2
+  24: 18, // Heating element 3
+  27: 13  // General purpose
+};
+
+// Get physical pin number from BCM
+function getPhysicalPinNumber(bcmPin) {
+  return RPI_BCM_TO_PHYSICAL[bcmPin] || 'Unknown';
+}
+
+// Log physical pin mappings on startup for debugging
+function logPinMappings() {
+  if (boardInfo.type === 'raspberry-pi') {
+    console.log("\n=== Raspberry Pi GPIO Pin Mappings (BCM → Physical) ===");
+    console.log(`Fan Control: BCM ${PINS.FAN_CONTROL} → Physical Pin ${getPhysicalPinNumber(PINS.FAN_CONTROL)}`);
+    console.log(`Solenoid Valve: BCM ${PINS.SOLENOID_VALVE} → Physical Pin ${getPhysicalPinNumber(PINS.SOLENOID_VALVE)}`);
+    console.log("Heating Elements:");
+    PINS.HEATING_ELEMENTS.forEach((pin, index) => {
+      console.log(`  Element ${index+1}: BCM ${pin} → Physical Pin ${getPhysicalPinNumber(pin)}`);
+    });
+    console.log(`Temperature Probe: BCM ${PINS.TEMP_PROBE} → Physical Pin ${getPhysicalPinNumber(PINS.TEMP_PROBE)} (1-Wire)`);
+    console.log("==================================================\n");
+  }
+}
+
 // Initialize board type and determine pin mapping
 detectBoardType();
 const PINS = PIN_MAPPINGS[boardInfo.type] || PIN_MAPPINGS.unknown;
@@ -123,113 +157,227 @@ const isCompatibleBoard = boardInfo.type !== 'unknown';
 // GPIO module - will be dynamically loaded
 let gpio = null;
 
-// Try to load sysfs GPIO as a fallback method
-function createSysFsGpio(pin, direction) {
-  const gpioPath = `/sys/class/gpio/gpio${pin}`;
-  
+// Helper function to execute GPIO commands via terminal
+function executeGpioCommand(command) {
   try {
-    // Export the GPIO if not already exported
-    if (!fs.existsSync(gpioPath)) {
-      try {
-        fs.writeFileSync('/sys/class/gpio/export', pin.toString());
-        // Give the system time to create the GPIO files
-        execSync('sleep 0.1');
-      } catch (exportErr) {
-        console.error(`Permission denied when exporting GPIO ${pin}. This is usually a permissions issue.`);
-        console.log(`Please run 'sudo chmod -R a+rw /sys/class/gpio' or run the application with sudo`);
-        
-        // Try with sudo if normal export fails
-        try {
-          execSync(`echo ${pin} | sudo tee /sys/class/gpio/export`);
-          // Give the system time to create the GPIO files
-          execSync('sleep 0.5');
-        } catch (sudoErr) {
-          throw new Error(`Failed to export GPIO ${pin} even with sudo`);
-        }
-      }
-    }
-    
-    // Set direction
-    try {
-      fs.writeFileSync(`${gpioPath}/direction`, direction);
-    } catch (dirErr) {
-      console.error(`Permission denied when setting direction for GPIO ${pin}`);
-      try {
-        execSync(`echo ${direction} | sudo tee ${gpioPath}/direction`);
-      } catch (sudoDirErr) {
-        throw new Error(`Failed to set direction for GPIO ${pin}`);
-      }
-    }
-    
-    return {
-      pin,
-      writeSync: (value) => {
-        try {
-          fs.writeFileSync(`${gpioPath}/value`, value.toString());
-          return true;
-        } catch (error) {
-          console.error(`Failed to write to GPIO ${pin}:`, error.message);
-          // Try with sudo as a last resort
-          try {
-            execSync(`echo ${value} | sudo tee ${gpioPath}/value > /dev/null`);
-            console.log(`Used sudo to set GPIO ${pin} to ${value}`);
-            return true;
-          } catch (sudoError) {
-            console.error(`Failed to set GPIO ${pin} even with sudo:`, sudoError.message);
-            return false;
-          }
-        }
-      },
-      readSync: () => {
-        try {
-          return parseInt(fs.readFileSync(`${gpioPath}/value`, 'utf8').trim());
-        } catch (error) {
-          console.error(`Failed to read from GPIO ${pin}:`, error.message);
-          // Try with sudo as a last resort
-          try {
-            return parseInt(execSync(`sudo cat ${gpioPath}/value`).toString().trim());
-          } catch (sudoError) {
-            console.error(`Failed to read GPIO ${pin} even with sudo:`, sudoError.message);
-            return -1;
-          }
-        }
-      },
-      unexport: () => {
-        try {
-          fs.writeFileSync('/sys/class/gpio/unexport', pin.toString());
-        } catch (error) {
-          console.error(`Failed to unexport GPIO ${pin}:`, error.message);
-          // Try with sudo
-          try {
-            execSync(`echo ${pin} | sudo tee /sys/class/gpio/unexport > /dev/null`);
-          } catch (sudoErr) {
-            // Just log the error, don't throw
-            console.error(`Failed to unexport GPIO ${pin} even with sudo:`, sudoErr.message);
-          }
-        }
-      }
-    };
+    execSync(command, { stdio: 'pipe' });
+    return true;
   } catch (error) {
-    console.error(`Failed to setup GPIO ${pin} with sysfs:`, error);
-    return {
-      pin,
-      writeSync: (value) => { 
-        console.log(`Simulating GPIO ${pin} write: ${value}`); 
-        return false; 
-      },
-      readSync: () => { 
-        console.log(`Simulating GPIO ${pin} read`); 
-        return -1; 
-      },
-      unexport: () => { 
-        console.log(`Simulating GPIO ${pin} unexport`); 
-      }
-    };
+    console.error(`GPIO command failed: ${error.message}`);
+    return false;
+  }
+}
+
+// Initialize raspi-gpio for Raspberry Pi
+function initializeRaspiGpio() {
+  // Check if raspi-gpio is available
+  try {
+    execSync('which raspi-gpio', { stdio: 'pipe' });
+    console.log('Using raspi-gpio for GPIO control');
+    return true;
+  } catch (error) {
+    console.warn('raspi-gpio not found, will try installing it');
+    try {
+      execSync('sudo apt-get update && sudo apt-get install -y raspi-gpio', { stdio: 'inherit' });
+      console.log('raspi-gpio installed successfully');
+      return true;
+    } catch (installError) {
+      console.error('Failed to install raspi-gpio:', installError.message);
+      return false;
+    }
   }
 }
 
 // Try loading different GPIO libraries based on the detected board
 function loadGpioLibrary() {
+  // For Raspberry Pi, try using raspi-gpio command-line utility first
+  if (boardInfo.type === 'raspberry-pi') {
+    if (initializeRaspiGpio()) {
+      boardInfo.gpioLibrary = 'raspi-gpio-cli';
+      return {
+        type: 'raspi-gpio-cli',
+        Gpio: function(pin, direction) {
+          // Initialize the pin
+          const mode = direction === 'out' ? 'op' : 'ip';
+          executeGpioCommand(`sudo raspi-gpio set ${pin} ${mode}`);
+          
+          return {
+            pin,
+            writeSync: function(value) {
+              const level = value ? 'dh' : 'dl';
+              return executeGpioCommand(`sudo raspi-gpio set ${pin} ${level}`);
+            },
+            readSync: function() {
+              try {
+                const output = execSync(`sudo raspi-gpio get ${pin}`, { encoding: 'utf8' });
+                // Parse the output to get the pin level
+                if (output.includes('level=1')) return 1;
+                if (output.includes('level=0')) return 0;
+                return -1;
+              } catch (error) {
+                console.error(`Failed to read GPIO ${pin}:`, error.message);
+                return -1;
+              }
+            },
+            unexport: function() {
+              // No need to unexport when using raspi-gpio
+              return true;
+            }
+          };
+        },
+        isSysFsImplementation: false
+      };
+    }
+  }
+
+  // For Orange Pi, try gpio command
+  if (boardInfo.type === 'orange-pi') {
+    // Check if gpio utility is available (assuming WiringOP is installed)
+    try {
+      execSync('which gpio', { stdio: 'pipe' });
+      console.log('Using gpio command for Orange Pi');
+      boardInfo.gpioLibrary = 'gpio-cli';
+      
+      return {
+        type: 'gpio-cli',
+        Gpio: function(pin, direction) {
+          // Initialize the pin with gpio command
+          const mode = direction === 'out' ? 'out' : 'in';
+          executeGpioCommand(`sudo gpio mode ${pin} ${mode}`);
+          
+          return {
+            pin,
+            writeSync: function(value) {
+              return executeGpioCommand(`sudo gpio write ${pin} ${value}`);
+            },
+            readSync: function() {
+              try {
+                const output = execSync(`sudo gpio read ${pin}`, { encoding: 'utf8' });
+                return parseInt(output.trim()) || 0;
+              } catch (error) {
+                console.error(`Failed to read GPIO ${pin}:`, error.message);
+                return -1;
+              }
+            },
+            unexport: function() {
+              // No specific unexport for gpio command
+              return true;
+            }
+          };
+        },
+        isSysFsImplementation: false
+      };
+    } catch (error) {
+      console.warn('gpio command not found for Orange Pi, trying other methods');
+    }
+  }
+
+  // Try to load sysfs GPIO as a fallback method
+  function createSysFsGpio(pin, direction) {
+    const gpioPath = `/sys/class/gpio/gpio${pin}`;
+    
+    try {
+      // Export the GPIO if not already exported
+      if (!fs.existsSync(gpioPath)) {
+        try {
+          fs.writeFileSync('/sys/class/gpio/export', pin.toString());
+          // Give the system time to create the GPIO files
+          execSync('sleep 0.1');
+        } catch (exportErr) {
+          console.error(`Permission denied when exporting GPIO ${pin}. This is usually a permissions issue.`);
+          console.log(`Please run 'sudo chmod -R a+rw /sys/class/gpio' or run the application with sudo`);
+          
+          // Try with sudo if normal export fails
+          try {
+            execSync(`echo ${pin} | sudo tee /sys/class/gpio/export`);
+            // Give the system time to create the GPIO files
+            execSync('sleep 0.5');
+          } catch (sudoErr) {
+            throw new Error(`Failed to export GPIO ${pin} even with sudo`);
+          }
+        }
+      }
+      
+      // Set direction
+      try {
+        fs.writeFileSync(`${gpioPath}/direction`, direction);
+      } catch (dirErr) {
+        console.error(`Permission denied when setting direction for GPIO ${pin}`);
+        try {
+          execSync(`echo ${direction} | sudo tee ${gpioPath}/direction`);
+        } catch (sudoDirErr) {
+          throw new Error(`Failed to set direction for GPIO ${pin}`);
+        }
+      }
+      
+      return {
+        pin,
+        writeSync: (value) => {
+          try {
+            fs.writeFileSync(`${gpioPath}/value`, value.toString());
+            return true;
+          } catch (error) {
+            console.error(`Failed to write to GPIO ${pin}:`, error.message);
+            // Try with sudo as a last resort
+            try {
+              execSync(`echo ${value} | sudo tee ${gpioPath}/value > /dev/null`);
+              console.log(`Used sudo to set GPIO ${pin} to ${value}`);
+              return true;
+            } catch (sudoError) {
+              console.error(`Failed to set GPIO ${pin} even with sudo:`, sudoError.message);
+              return false;
+            }
+          }
+        },
+        readSync: () => {
+          try {
+            return parseInt(fs.readFileSync(`${gpioPath}/value`, 'utf8').trim());
+          } catch (error) {
+            console.error(`Failed to read from GPIO ${pin}:`, error.message);
+            // Try with sudo as a last resort
+            try {
+              return parseInt(execSync(`sudo cat ${gpioPath}/value`).toString().trim());
+            } catch (sudoError) {
+              console.error(`Failed to read GPIO ${pin} even with sudo:`, sudoError.message);
+              return -1;
+            }
+          }
+        },
+        unexport: () => {
+          try {
+            fs.writeFileSync('/sys/class/gpio/unexport', pin.toString());
+          } catch (error) {
+            console.error(`Failed to unexport GPIO ${pin}:`, error.message);
+            // Try with sudo
+            try {
+              execSync(`echo ${pin} | sudo tee /sys/class/gpio/unexport > /dev/null`);
+            } catch (sudoErr) {
+              // Just log the error, don't throw
+              console.error(`Failed to unexport GPIO ${pin} even with sudo:`, sudoErr.message);
+            }
+          }
+        }
+      };
+    } catch (error) {
+      console.error(`Failed to setup GPIO ${pin} with sysfs:`, error);
+      return {
+        pin,
+        writeSync: (value) => { 
+          console.log(`Simulating GPIO ${pin} write: ${value}`); 
+          return false; 
+        },
+        readSync: () => { 
+          console.log(`Simulating GPIO ${pin} read`); 
+          return -1; 
+        },
+        unexport: () => { 
+          console.log(`Simulating GPIO ${pin} unexport`); 
+        }
+      };
+    }
+  }
+
+  // Fall back to Node.js libraries if CLI tools aren't available
   // First try the appropriate library based on board type
   if (boardInfo.type === 'raspberry-pi') {
     try {
@@ -268,9 +416,19 @@ function loadGpioLibrary() {
     console.warn('Failed to load rpio library:', error.message);
   }
   
-  // If no libraries are available, use our sysfs implementation
-  console.log('No GPIO libraries found, falling back to sysfs implementation');
-  boardInfo.gpioLibrary = 'sysfs';
+  // Try our custom sysfs implementation 
+  try {
+    const sysfsgpio = require('sysfsgpio');
+    boardInfo.gpioLibrary = 'sysfsgpio';
+    console.log('Using fallback sysfs GPIO implementation');
+    return sysfsgpio;
+  } catch (error) {
+    console.warn('Failed to load sysfsgpio library:', error.message);
+  }
+  
+  // As a last resort, use our internal sysfs implementation
+  console.log('No GPIO libraries found, using internal sysfs implementation');
+  boardInfo.gpioLibrary = 'sysfs-internal';
   return {
     Gpio: (pin, direction) => createSysFsGpio(pin, direction === 'out' ? 'out' : 'in'),
     isSysFsImplementation: true
@@ -284,6 +442,9 @@ function initializeGPIO() {
     return true;
   }
 
+  // Log pin mappings for easier hardware connections
+  logPinMappings();
+
   try {
     gpio = loadGpioLibrary();
     
@@ -295,7 +456,13 @@ function initializeGPIO() {
     console.log(`Using GPIO library: ${boardInfo.gpioLibrary}`);
     
     // Initialize outputs based on the library we're using
-    if (boardInfo.gpioLibrary === 'onoff') {
+    if (boardInfo.gpioLibrary === 'raspi-gpio-cli' || boardInfo.gpioLibrary === 'gpio-cli') {
+      // Using CLI tools for GPIO control
+      fan = gpio.Gpio(PINS.FAN_CONTROL, 'out');
+      heatingElements = PINS.HEATING_ELEMENTS.map(pin => gpio.Gpio(pin, 'out'));
+      solenoidValve = gpio.Gpio(PINS.SOLENOID_VALVE, 'out');
+    }
+    else if (boardInfo.gpioLibrary === 'onoff') {
       fan = new gpio.Gpio(PINS.FAN_CONTROL, 'out');
       heatingElements = PINS.HEATING_ELEMENTS.map(pin => new gpio.Gpio(pin, 'out'));
       solenoidValve = new gpio.Gpio(PINS.SOLENOID_VALVE, 'out');
@@ -393,8 +560,37 @@ function setFanSpeed(speed) {
   if (isCompatibleBoard && fan) {
     // In a real implementation, you would use hardware PWM 
     // This simplified version just toggles on/off based on speed
-    fan.writeSync(pwmValue > 0 ? 1 : 0);
-    console.log(`Setting fan speed to ${speed}% (PWM: ${pwmValue})`);
+    const value = pwmValue > 0 ? 1 : 0;
+    
+    // Debug output - more verbose for troubleshooting
+    console.log(`[GPIO DEBUG] Setting fan GPIO ${PINS.FAN_CONTROL} (Physical pin ${getPhysicalPinNumber(PINS.FAN_CONTROL)}) to ${value}`);
+    
+    try {
+      fan.writeSync(value);
+      console.log(`Fan GPIO set successfully to ${value}`);
+      
+      // Verify the value was set correctly if using sysfs
+      if (boardInfo.gpioLibrary === 'sysfs-internal' || boardInfo.gpioLibrary === 'sysfsgpio') {
+        const gpioPath = `/sys/class/gpio/gpio${PINS.FAN_CONTROL}/value`;
+        if (fs.existsSync(gpioPath)) {
+          const readValue = fs.readFileSync(gpioPath, 'utf8').trim();
+          console.log(`[GPIO VERIFY] Fan GPIO ${PINS.FAN_CONTROL} actual value: ${readValue}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[GPIO ERROR] Failed to set fan GPIO: ${error.message}`);
+      
+      // Alternative approach - try direct sysfs access
+      try {
+        const gpioPath = `/sys/class/gpio/gpio${PINS.FAN_CONTROL}/value`;
+        if (fs.existsSync(gpioPath)) {
+          fs.writeFileSync(gpioPath, value.toString());
+          console.log(`[GPIO RECOVER] Set fan GPIO using direct sysfs write`);
+        }
+      } catch (sysError) {
+        console.error(`[GPIO ERROR] Direct sysfs write failed: ${sysError.message}`);
+      }
+    }
   } else {
     // Simulate fan control in development mode
     console.log(`[DEV] Setting fan speed to ${speed}% (PWM: ${pwmValue})`);
@@ -412,9 +608,41 @@ function setFanSpeed(speed) {
 // Control heating elements
 function setHeatingElements(isOn) {
   if (isCompatibleBoard && heatingElements.length) {
+    const value = isOn ? 1 : 0;
+    console.log(`[GPIO DEBUG] Setting ${heatingElements.length} heating elements to ${value}`);
+    
     // Turn all heating elements on or off
-    heatingElements.forEach(element => element.writeSync(isOn ? 1 : 0));
-    console.log(`Setting heating elements to ${isOn ? 'ON' : 'OFF'}`);
+    heatingElements.forEach((element, index) => {
+      const pin = PINS.HEATING_ELEMENTS[index];
+      console.log(`[GPIO DEBUG] Setting heating element ${index+1} GPIO ${pin} (Physical pin ${getPhysicalPinNumber(pin)}) to ${value}`);
+      
+      try {
+        element.writeSync(value);
+        console.log(`Heating element ${index+1} GPIO set successfully to ${value}`);
+        
+        // Verify the value was set
+        if (boardInfo.gpioLibrary === 'sysfs-internal' || boardInfo.gpioLibrary === 'sysfsgpio') {
+          const gpioPath = `/sys/class/gpio/gpio${pin}/value`;
+          if (fs.existsSync(gpioPath)) {
+            const readValue = fs.readFileSync(gpioPath, 'utf8').trim();
+            console.log(`[GPIO VERIFY] Heating element GPIO ${pin} actual value: ${readValue}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[GPIO ERROR] Failed to set heating element GPIO ${pin}: ${error.message}`);
+        
+        // Alternative approach - try direct sysfs access
+        try {
+          const gpioPath = `/sys/class/gpio/gpio${pin}/value`;
+          if (fs.existsSync(gpioPath)) {
+            fs.writeFileSync(gpioPath, value.toString());
+            console.log(`[GPIO RECOVER] Set heating element GPIO ${pin} using direct sysfs write`);
+          }
+        } catch (sysError) {
+          console.error(`[GPIO ERROR] Direct sysfs write failed for GPIO ${pin}: ${sysError.message}`);
+        }
+      }
+    });
   } else {
     // Simulate heating elements control in development mode
     console.log(`[DEV] Setting heating elements to ${isOn ? 'ON' : 'OFF'}`);
@@ -432,8 +660,35 @@ function setHeatingElements(isOn) {
 // Control solenoid valve for steam
 function setSolenoidValve(isOpen) {
   if (isCompatibleBoard && solenoidValve) {
-    solenoidValve.writeSync(isOpen ? 1 : 0);
-    console.log(`Setting solenoid valve to ${isOpen ? 'OPEN' : 'CLOSED'}`);
+    const value = isOpen ? 1 : 0;
+    console.log(`[GPIO DEBUG] Setting solenoid valve GPIO ${PINS.SOLENOID_VALVE} (Physical pin ${getPhysicalPinNumber(PINS.SOLENOID_VALVE)}) to ${value}`);
+    
+    try {
+      solenoidValve.writeSync(value);
+      console.log(`Solenoid valve GPIO set successfully to ${value}`);
+      
+      // Verify the value was set
+      if (boardInfo.gpioLibrary === 'sysfs-internal' || boardInfo.gpioLibrary === 'sysfsgpio') {
+        const gpioPath = `/sys/class/gpio/gpio${PINS.SOLENOID_VALVE}/value`;
+        if (fs.existsSync(gpioPath)) {
+          const readValue = fs.readFileSync(gpioPath, 'utf8').trim();
+          console.log(`[GPIO VERIFY] Solenoid valve GPIO ${PINS.SOLENOID_VALVE} actual value: ${readValue}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[GPIO ERROR] Failed to set solenoid valve GPIO: ${error.message}`);
+      
+      // Alternative approach - try direct sysfs access
+      try {
+        const gpioPath = `/sys/class/gpio/gpio${PINS.SOLENOID_VALVE}/value`;
+        if (fs.existsSync(gpioPath)) {
+          fs.writeFileSync(gpioPath, value.toString());
+          console.log(`[GPIO RECOVER] Set solenoid valve GPIO using direct sysfs write`);
+        }
+      } catch (sysError) {
+        console.error(`[GPIO ERROR] Direct sysfs write failed: ${sysError.message}`);
+      }
+    }
   } else {
     // Simulate solenoid valve control in development mode
     console.log(`[DEV] Setting solenoid valve to ${isOpen ? 'OPEN' : 'CLOSED'}`);
@@ -525,7 +780,19 @@ function readPressureSensor() {
 // Initialize CSV data recording
 function initializeDataRecording() {
   const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-  const downloadsFolder = path.join(os.homedir(), 'Downloads');
+  
+  // Use a more reliable directory path that works for both regular user and root
+  let downloadsFolder;
+  
+  // Try to create and use user's Downloads folder first
+  try {
+    downloadsFolder = path.join(os.homedir(), 'Downloads');
+    fs.mkdirSync(downloadsFolder, { recursive: true });
+  } catch (error) {
+    console.log('Could not access user Downloads folder, using /tmp instead');
+    downloadsFolder = '/tmp';
+  }
+  
   csvFilePath = path.join(downloadsFolder, `oven_data_${timestamp}.csv`);
   
   try {
@@ -538,7 +805,17 @@ function initializeDataRecording() {
     return true;
   } catch (error) {
     console.error('Failed to initialize data recording:', error);
-    return false;
+    
+    // Fall back to /tmp if initial path failed
+    try {
+      csvFilePath = path.join('/tmp', `oven_data_${timestamp}.csv`);
+      fs.writeFileSync(csvFilePath, header);
+      console.log(`Fallback data recording initialized. CSV file: ${csvFilePath}`);
+      return true;
+    } catch (fallbackError) {
+      console.error('Failed to initialize fallback data recording:', fallbackError);
+      return false;
+    }
   }
 }
 
