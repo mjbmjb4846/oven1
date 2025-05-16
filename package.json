@@ -21,9 +21,10 @@
     "dist:pi-no-native": "cross-env USE_SYSTEM_EPOLL=true electron-builder --linux --arm64 --armv7l",
     "prepare-pi": "node scripts/prepare-pi.js",
     "prepare-orange": "node scripts/prepare-orange.js",
-    "build:arm": "node scripts/prepare-native-modules.js --armv7l && npm run dist:pi-armv7l",
-    "build:arm64": "node scripts/prepare-native-modules.js --arm64 && npm run dist:pi-arm64",
-    "build:orangepi": "node scripts/prepare-native-modules.js --arm64 && npm run dist:orangepi",
+    "rebuild-native": "node scripts/rebuild-native.js",
+    "build:arm": "node scripts/rebuild-native.js armv7l && npm run dist:pi-armv7l",
+    "build:arm64": "node scripts/rebuild-native.js arm64 && npm run dist:pi-arm64",
+    "build:orangepi": "node scripts/rebuild-native.js arm64 && npm run dist:orangepi",
     "dist:linux-deb": "electron-builder --linux --x64 -c.linux.target=deb"
   },
   "author": {
@@ -73,6 +74,10 @@
       {
         "from": "resources/install-native-modules.sh",
         "to": "install-native-modules.sh"
+      },
+      {
+        "from": "resources/oven-control.sh",
+        "to": "oven-control.sh"
       }
     ],
     "afterPack": "./resources/afterPack.js",
@@ -89,7 +94,9 @@
         "Name": "Oven Control",
         "Comment": "Raspberry Pi Oven Control System",
         "StartupWMClass": "oven-control",
-        "Exec": "pkexec env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY /usr/bin/oven-control"
+        "Terminal": false,
+        "Type": "Application",
+        "Categories": "Utility;"
       }
     },
     "win": {

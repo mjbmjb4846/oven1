@@ -1,8 +1,8 @@
 [Desktop Entry]
 Name=Oven Control
 Comment=Raspberry Pi Oven Control System
-Exec=/usr/bin/oven-control --no-sandbox
-Icon=oven-control
+Exec=/opt/RPi\ Oven\ Control/resources/oven-control.sh
+Icon=/opt/RPi Oven Control/resources/icon.png
 Terminal=false
 Type=Application
 Categories=Utility;
