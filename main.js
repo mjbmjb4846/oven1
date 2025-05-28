@@ -61,8 +61,15 @@ function createWindow(filePath, width, height) {
             nodeIntegration: true,
             contextIsolation: false
         },
-        autoHideMenuBar: true,  // Auto-hide the menu bar
-        menuBarVisible: false,  // Make the menu bar initially hidden
+        autoHideMenuBar: true,
+        menuBarVisible: false,
+        frame: false,                          // Remove default window frame
+        titleBarStyle: 'customButtonsOnHover', // Show window controls on hover
+        titleBarOverlay: {
+            color: '#2f3241',
+            symbolColor: '#FFFFFF',
+            height: 30
+        },
         icon: path.join(__dirname, 'build/icon.png')
     });
 
