@@ -111,6 +111,16 @@ app.whenReady().then(() => {
     // Initialize data recording
     initializeDataRecording();
     
+    // Start continuous temperature monitoring immediately
+    startContinuousTemperatureMonitoring();
+    
+    // Start continuous pressure monitoring immediately
+    pressureMonitoringInterval = control.startPressureMonitoring((pressure) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('pressure-reading', pressure);
+        }
+    }, 2000);
+    
     // Set up IPC communication
     setupIPC();
     
@@ -147,6 +157,34 @@ function initializeDataRecording() {
     recordingActive = true;
 }
 
+// Start continuous temperature monitoring (separate from system control)
+function startContinuousTemperatureMonitoring() {
+    if (temperatureMonitoringInterval) {
+        clearInterval(temperatureMonitoringInterval);
+    }
+    
+    temperatureMonitoringInterval = setInterval(() => {
+        // Get temperature from probe if on compatible board, otherwise simulate
+        if (control.isCompatibleBoard && control.boardInfo && control.boardInfo.gpioLibrary) {
+            currentTemperature = control.readTemperatureProbe();
+        } else {
+            // Simulate temperature changes based on system state
+            if (systemActive) {
+                // When system is active, use the full heating/cooling simulation
+                currentTemperature = control.simulateTemperatureControl(targetTemperature, currentTemperature);
+            } else {
+                // When system is inactive, simulate natural cooling
+                currentTemperature = simulateNaturalCooling(currentTemperature);
+            }
+        }
+        
+        // Always send temperature reading to renderer for chart display
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('temperature-reading', currentTemperature);
+        }
+    }, 1000);
+}
+
 // Quit when all windows are closed
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
@@ -163,7 +201,13 @@ app.on('activate', () => {
 
 // Clean up resources when quitting
 app.on('before-quit', () => {
-    // Stop monitoring
+    // Stop temperature monitoring
+    if (temperatureMonitoringInterval) {
+        clearInterval(temperatureMonitoringInterval);
+        temperatureMonitoringInterval = null;
+    }
+    
+    // Stop pressure monitoring
     if (pressureMonitoringInterval) {
         control.stopPressureMonitoring(pressureMonitoringInterval);
     }
@@ -223,15 +267,8 @@ function setupIPC() {
         console.log('Starting oven system');
         systemActive = true;
         
-        // Start pressure monitoring
-        pressureMonitoringInterval = control.startPressureMonitoring((pressure) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('pressure-reading', pressure);
-            }
-        }, 2000);
-        
-        // Start temperature control simulation
-        startTemperatureControl();
+        // Note: Pressure and temperature monitoring are already running continuously
+        // No need to start additional monitoring here
     });
     
     // Handle system stop
@@ -257,25 +294,72 @@ function setupIPC() {
     });
 }
 
-// Simulate temperature control
-function startTemperatureControl() {
-    const temperatureInterval = setInterval(() => {
-        if (!systemActive) {
-            clearInterval(temperatureInterval);
-            return;
-        }
-        
+// Continuous temperature monitoring (regardless of system state)
+let temperatureMonitoringInterval = null;
+
+function startContinuousTemperatureMonitoring() {
+    if (temperatureMonitoringInterval) {
+        clearInterval(temperatureMonitoringInterval);
+    }
+    
+    temperatureMonitoringInterval = setInterval(() => {
         // Get temperature from probe if on compatible board, otherwise simulate
         if (control.isCompatibleBoard && control.boardInfo && control.boardInfo.gpioLibrary) {
             currentTemperature = control.readTemperatureProbe();
         } else {
-            // Simulate temperature changes based on heating elements and target temp
-            currentTemperature = control.simulateTemperatureControl(targetTemperature, currentTemperature);
+            // Simulate temperature changes based on system state
+            if (systemActive) {
+                // When system is active, use the full heating/cooling simulation
+                currentTemperature = control.simulateTemperatureControl(targetTemperature, currentTemperature);
+            } else {
+                // When system is inactive, simulate natural cooling
+                currentTemperature = simulateNaturalCooling(currentTemperature);
+            }
         }
         
-        // Send temperature reading to renderer
+        // Always send temperature reading to renderer for chart display
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('temperature-reading', currentTemperature);
         }
     }, 1000);
+}
+
+function simulateNaturalCooling(currentTemp) {
+    const roomTemp = 25; // Room temperature baseline
+    
+    if (currentTemp <= roomTemp) {
+        // Already at or below room temperature, just add small variations
+        const variation = Math.random() * 1 - 0.5; // -0.5 to 0.5 degree variation
+        return Math.max(roomTemp - 2, Math.min(roomTemp + 2, currentTemp + variation));
+    }
+    
+    // Calculate cooling rate based on temperature difference
+    const tempDifference = currentTemp - roomTemp;
+    
+    // Natural cooling follows Newton's law of cooling (exponential decay)
+    // Higher temperature differences cool faster
+    let coolingRate;
+    if (tempDifference > 100) {
+        coolingRate = 2 + Math.random(); // Fast cooling for high temps
+    } else if (tempDifference > 50) {
+        coolingRate = 1 + Math.random() * 0.5; // Medium cooling
+    } else if (tempDifference > 20) {
+        coolingRate = 0.5 + Math.random() * 0.3; // Slow cooling
+    } else {
+        coolingRate = 0.2 + Math.random() * 0.1; // Very slow cooling near room temp
+    }
+    
+    // Add some randomness to make it realistic
+    const noise = (Math.random() - 0.5) * 0.3;
+    
+    return Math.max(roomTemp, currentTemp - coolingRate + noise);
+}
+
+// Legacy function for compatibility (now just starts continuous monitoring)
+function startTemperatureControl() {
+    // This function is now redundant as we use continuous monitoring
+    // but keeping for backwards compatibility
+    if (!temperatureMonitoringInterval) {
+        startContinuousTemperatureMonitoring();
+    }
 }

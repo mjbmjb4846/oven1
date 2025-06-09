@@ -42,40 +42,17 @@ const cancelPresetBtn = document.getElementById('cancel-preset');
 const confirmPresetBtn = document.getElementById('confirm-preset');
 const closeModalBtn = document.querySelector('.close-modal');
 
-// Chart initialization
-const ctx = document.getElementById('temp-chart').getContext('2d');
-const tempChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: Array(30).fill(''),
-        datasets: [{
-            label: 'Temperature (°C)',
-            data: Array(30).fill(25),
-            borderColor: '#e63946',
-            backgroundColor: 'rgba(230, 57, 70, 0.1)',
-            tension: 0.4,
-            fill: true
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: false,
-                min: 20,
-                max: 310
-            }
-        },
-        animation: {
-            duration: 500
-        },
-        plugins: {
-            legend: {
-                display: false
-            }
-        }
-    }
+// Chart initialization - Custom implementation for ARM compatibility
+const tempChartCanvas = document.getElementById('temp-chart');
+const tempChart = new TemperatureChart(tempChartCanvas, {
+    maxDataPoints: 30,
+    minValue: 20,
+    maxValue: 320,
+    gridColor: '#e0e0e0',           // Light gray grid
+    lineColor: '#1976d2',           // Blue line
+    fillColor: 'rgba(25, 118, 210, 0.08)', // Soft blue fill
+    backgroundColor: '#fafbfc',     // Very light background
+    textColor: '#333333'            // Dark gray text
 });
 
 // System state
@@ -87,14 +64,81 @@ let steamLevel = 0;
 let pressureLevel = 0;
 let isRecording = true; // Default to true as we start recording on app launch
 
-// Preset system state
-let currentEditingPresetId = null;
-let selectedPresetElement = null;
-let draggingElement = null;
+// Temperature unit toggle
+let isFahrenheit = false;
+const tempDisplayContainer = document.getElementById('temp-display-container');
+const tempUnit = document.getElementById('temp-unit');
 
-// Load saved presets from localStorage with support for order
-let presets = {};
-let presetOrder = [];
+// Initialize temperature unit from localStorage
+const savedTempUnit = localStorage.getItem('temperatureUnit');
+if (savedTempUnit === 'fahrenheit') {
+    isFahrenheit = true;
+}
+
+// Initialize temperature display with proper unit
+updateTemperatureDisplay(currentTemp);
+
+// Temperature conversion functions
+function celsiusToFahrenheit(celsius) {
+    return (celsius * 9/5) + 32;
+}
+
+function fahrenheitToCelsius(fahrenheit) {
+    return (fahrenheit - 32) * 5/9;
+}
+
+function updateTemperatureDisplay(tempCelsius) {
+    if (isFahrenheit) {
+        const tempF = celsiusToFahrenheit(tempCelsius);
+        currentTempDisplay.textContent = Math.round(tempF);
+        tempUnit.textContent = '°F';
+    } else {
+        currentTempDisplay.textContent = Math.round(tempCelsius);
+        tempUnit.textContent = '°C';
+    }
+}
+
+function toggleTemperatureUnit() {
+    isFahrenheit = !isFahrenheit;
+    updateTemperatureDisplay(currentTemp);
+    
+    // Update temperature setpoint display
+    updateTemperatureSetpointDisplay();
+    
+    // Update chart display
+    tempChart.setTemperatureUnit(isFahrenheit);
+    
+    // Update editable temperature range with new unit
+    updateEditableTemperatureRange();
+    
+    // Save preference to localStorage
+    localStorage.setItem('temperatureUnit', isFahrenheit ? 'fahrenheit' : 'celsius');
+}
+
+// Helper function to update temperature setpoint display when unit changes
+function updateTemperatureSetpointDisplay() {
+    if (isFahrenheit) {
+        const tempF = celsiusToFahrenheit(targetTemp);
+        tempValue.textContent = `${Math.round(tempF)}°F`;
+    } else {
+        tempValue.textContent = `${targetTemp}°C`;
+    }
+}
+
+// Helper function to update editable temperature range units
+function updateEditableTemperatureRange() {
+    // Update the makeRangeValueEditable for temperature with new unit
+    // We need to recreate the editable functionality with updated units
+    const newUnit = isFahrenheit ? '°F' : '°C';
+    
+    // Update the display with new unit
+    if (isFahrenheit) {
+        const tempF = celsiusToFahrenheit(targetTemp);
+        tempValue.textContent = `${Math.round(tempF)}°F`;
+    } else {
+        tempValue.textContent = `${targetTemp}°C`;
+    }
+}
 
 // Initialize presets and their order
 function initializePresets() {
@@ -340,8 +384,12 @@ function applyPreset(presetName) {
 
 // Event listeners for controls
 tempSlider.addEventListener('input', () => {
+    // Slider always works in Celsius internally
     targetTemp = parseInt(tempSlider.value);
-    tempValue.textContent = `${targetTemp}°C`;
+    
+    // Update display based on current unit
+    updateTemperatureSetpointDisplay();
+    
     ipcRenderer.send('set-temperature', targetTemp);
 });
 
@@ -444,11 +492,11 @@ function startSystem() {
     
     ipcRenderer.send('start-system');
     
-    // Begin simulation
-    startSimulation();
+    // Temperature and pressure monitoring is handled by the main process
+    // No local simulation needed
 }
 
-// Stop the system - modified to keep recording data while cooling
+// Stop the system - temperature monitoring continues in main process
 function stopSystem() {
     systemRunning = false;
     heatingToggle.checked = false;
@@ -459,18 +507,16 @@ function stopSystem() {
     updateFanStatus(false);
     updateSteamStatus(false);
     
-    // No longer disabling the steam slider
-    
-    // Send stop command but don't stop monitoring/recording
+    // Send stop command - main process will handle cooling simulation
     ipcRenderer.send('stop-system');
     
-    // Stop simulation but continue to show temperature changes as system cools
+    // Stop any remaining local simulation intervals
     if (simulationInterval) {
         clearInterval(simulationInterval);
+        simulationInterval = null;
     }
     
-    // Start a cooling simulation instead
-    startCoolingSimulation();
+    // Temperature monitoring and cooling simulation continues in the main process
 }
 
 // Update status indicators
@@ -489,110 +535,40 @@ function updateSteamStatus(isOn) {
     steamState.textContent = isOn ? 'ON' : 'OFF';
 }
 
-// Simulation variables
+// Simulation variables (legacy - now handled by main process)
 let simulationInterval;
 
-// Simple temperature simulation
+// Legacy simulation functions - no longer used as main process handles all monitoring
+// Keeping for compatibility but they should not be called
+
 function startSimulation() {
-    stopSimulation();
-    
-    simulationInterval = setInterval(() => {
-        // Simulate temperature changes
-        if (heatingToggle.checked && currentTemp < targetTemp) {
-            currentTemp += 1 + Math.random();
-        } else if (!heatingToggle.checked || currentTemp > targetTemp) {
-            currentTemp -= 0.5 + Math.random() * 0.5;
-        }
-        
-        // Add some noise to make it realistic
-        currentTemp += (Math.random() - 0.5) * 0.5;
-        currentTemp = Math.max(25, Math.min(300, currentTemp));
-        currentTempDisplay.textContent = Math.round(currentTemp);
-        
-        // Update chart
-        tempChart.data.datasets[0].data.shift();
-        tempChart.data.datasets[0].data.push(currentTemp);
-        tempChart.update();
-        
-        // Simulate pressure sensor (0-3V)
-        if (solenoidToggle.checked) {
-            pressureLevel = 1 + Math.random() * 2; // 1-3V when steam valve is on
-        } else {
-            pressureLevel = Math.random(); // 0-1V when steam valve is off
-        }
-        
-        const pressurePct = (pressureLevel / 3) * 100;
-        pressureGauge.style.width = `${pressurePct}%`;
-        pressureValue.textContent = `${pressureLevel.toFixed(2)} V`;
-        
-        // Send data to main process
-        ipcRenderer.send('update-data', {
-            temperature: currentTemp,
-            pressure: pressureLevel
-        });
-    }, 1000);
+    // No longer used - main process handles temperature simulation
+    console.log('startSimulation called but main process now handles temperature monitoring');
 }
 
 function stopSimulation() {
     if (simulationInterval) {
         clearInterval(simulationInterval);
+        simulationInterval = null;
     }
 }
 
-// Simulate cooling after the system is stopped
 function startCoolingSimulation() {
-    simulationInterval = setInterval(() => {
-        // Simulate gradual cooling
-        if (currentTemp > 25) {
-            currentTemp -= 0.3 + Math.random() * 0.3;
-        }
-        
-        // Add some noise to make it realistic
-        currentTemp += (Math.random() - 0.5) * 0.2;
-        currentTemp = Math.max(25, currentTemp);
-        currentTempDisplay.textContent = Math.round(currentTemp);
-        
-        // Update chart
-        tempChart.data.datasets[0].data.shift();
-        tempChart.data.datasets[0].data.push(currentTemp);
-        tempChart.update();
-        
-        // Simulate pressure decreasing
-        pressureLevel = Math.max(0, pressureLevel - 0.1 * Math.random());
-        const pressurePct = (pressureLevel / 3) * 100;
-        pressureGauge.style.width = `${pressurePct}%`;
-        pressureValue.textContent = `${pressureLevel.toFixed(2)} V`;
-        
-        // Send data to main process for recording
-        ipcRenderer.send('update-data', {
-            temperature: currentTemp,
-            pressure: pressureLevel
-        });
-        
-        // Stop cooling simulation when temperature gets close to room temperature
-        if (currentTemp <= 25.5) {
-            clearInterval(simulationInterval);
-        }
-    }, 1000);
+    // No longer used - main process handles cooling simulation
+    console.log('startCoolingSimulation called but main process now handles cooling');
 }
 
 // Handle temperature updates from main process
 ipcRenderer.on('temperature-reading', (event, temp) => {
-    if (!systemRunning) return;
-    
     currentTemp = temp;
-    currentTempDisplay.textContent = Math.round(currentTemp);
+    updateTemperatureDisplay(currentTemp);
     
-    // Update chart
-    tempChart.data.datasets[0].data.shift();
-    tempChart.data.datasets[0].data.push(currentTemp);
-    tempChart.update();
+    // Always update chart, regardless of system state
+    tempChart.addDataPoint(currentTemp);
 });
 
 // Handle pressure updates from main process
 ipcRenderer.on('pressure-reading', (event, pressure) => {
-    if (!systemRunning) return;
-    
     pressureLevel = pressure;
     const pressurePct = (pressureLevel / 3) * 100;
     pressureGauge.style.width = `${pressurePct}%`;
@@ -744,3 +720,125 @@ function handleDrop(e) {
     this.classList.remove('over');
     return false;
 }
+
+// Temperature display click handler for unit toggle
+tempDisplayContainer.addEventListener('click', toggleTemperatureUnit);
+
+// Make range values editable
+function makeRangeValueEditable(element, slider, min, max, unit = '', isTemperature = false) {
+    element.addEventListener('click', function(e) {
+        e.stopPropagation();
+        
+        if (element.classList.contains('editing')) {
+            return;
+        }
+        
+        let currentValue, displayMin, displayMax, displayUnit;
+        
+        if (isTemperature) {
+            // For temperature, handle unit conversion
+            currentValue = parseInt(slider.value); // Slider value is always in Celsius
+            if (isFahrenheit) {
+                displayMin = Math.round(celsiusToFahrenheit(min));
+                displayMax = Math.round(celsiusToFahrenheit(max));
+                displayUnit = '°F';
+            } else {
+                displayMin = min;
+                displayMax = max;
+                displayUnit = '°C';
+            }
+        } else {
+            currentValue = parseInt(slider.value);
+            displayMin = min;
+            displayMax = max;
+            displayUnit = unit;
+        }
+        
+        element.classList.add('editing');
+        
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'range-value-input';
+        input.min = displayMin;
+        input.max = displayMax;
+        
+        if (isTemperature && isFahrenheit) {
+            input.value = Math.round(celsiusToFahrenheit(currentValue));
+        } else {
+            input.value = currentValue;
+        }
+        
+        input.step = 1;
+        
+        element.innerHTML = '';
+        element.appendChild(input);
+        
+        input.focus();
+        input.select();
+        
+        function finishEdit() {
+            let newValue = parseInt(input.value);
+            let validValue = newValue;
+            
+            // Clamp value to min/max in display units
+            if (newValue < displayMin) validValue = displayMin;
+            if (newValue > displayMax) validValue = displayMax;
+            if (isNaN(newValue)) {
+                if (isTemperature && isFahrenheit) {
+                    validValue = Math.round(celsiusToFahrenheit(currentValue));
+                } else {
+                    validValue = currentValue;
+                }
+            }
+            
+            // Convert back to Celsius for slider if this is temperature
+            let sliderValue = validValue;
+            if (isTemperature && isFahrenheit) {
+                sliderValue = Math.round(fahrenheitToCelsius(validValue));
+                // Clamp to original Celsius range
+                if (sliderValue < min) sliderValue = min;
+                if (sliderValue > max) sliderValue = max;
+            }
+            
+            // Update slider and display
+            slider.value = sliderValue;
+            element.classList.remove('editing');
+            
+            if (isTemperature) {
+                if (isFahrenheit) {
+                    element.textContent = `${Math.round(celsiusToFahrenheit(sliderValue))}°F`;
+                } else {
+                    element.textContent = `${sliderValue}°C`;
+                }
+            } else {
+                element.textContent = `${validValue}${displayUnit}`;
+            }
+            
+            // Trigger the slider's input event to update the system
+            slider.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        
+        input.addEventListener('blur', finishEdit);
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                finishEdit();
+            } else if (e.key === 'Escape') {
+                element.classList.remove('editing');
+                if (isTemperature) {
+                    if (isFahrenheit) {
+                        element.textContent = `${Math.round(celsiusToFahrenheit(currentValue))}°F`;
+                    } else {
+                        element.textContent = `${currentValue}°C`;
+                    }
+                } else {
+                    element.textContent = `${currentValue}${displayUnit}`;
+                }
+            }
+        });
+    });
+}
+
+// Initialize editable range values
+makeRangeValueEditable(tempValue, tempSlider, 25, 320, '°C', true); // true indicates temperature field
+makeRangeValueEditable(steamValue, steamSlider, 0, 100, '%');
+makeRangeValueEditable(fanValue, fanSlider, 0, 100, '%');

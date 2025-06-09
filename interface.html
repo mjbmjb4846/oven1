@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Raspberry Pi Oven Control</title>
     <link rel="stylesheet" href="global.css">
+    <script src="chart-canvas.js"></script>
 </head>
 <body>
     <!-- Simulation indicator - Only visible when not running on Raspberry Pi -->
@@ -14,15 +15,15 @@
         <div class="panel display-panel">
             <h1>Oven Control System</h1>
             
-            <div class="temperature-display">
-                <span id="current-temp">25</span>°C
+            <div class="temperature-display" id="temp-display-container" style="cursor: pointer;" title="Click to toggle °C/°F">
+                <span id="current-temp">25</span><span id="temp-unit">°C</span>
             </div>
             
             <div class="control-group">
                 <h3>Temperature Control</h3>
                 <div class="control-item">
                     <span>Target Temperature</span>
-                    <input type="range" class="range-slider" id="temp-slider" min="25" max="300" value="150">
+                    <input type="range" class="range-slider" id="temp-slider" min="25" max="320" value="150">
                     <span class="range-value" id="temp-value">150°C</span>
                 </div>
                 <div class="control-item">
@@ -149,7 +150,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>
