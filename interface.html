@@ -36,22 +36,6 @@
             </div>
 
             <div class="control-group">
-                <h3>Steam Control</h3>
-                <div class="control-item">
-                    <span>Steam Level</span>
-                    <input type="range" class="range-slider" id="steam-slider" min="0" max="100" value="0">
-                    <span class="range-value" id="steam-value">0%</span>
-                </div>
-                <div class="control-item">
-                    <span>Solenoid Valve</span>
-                    <label class="switch">
-                        <input type="checkbox" id="solenoid-toggle">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="control-group">
                 <h3>Fan Control</h3>
                 <div class="control-item">
                     <span>Fan Speed</span>
@@ -62,6 +46,22 @@
                     <span>Fan Power</span>
                     <label class="switch">
                         <input type="checkbox" id="fan-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Steam Control</h3>
+                <div class="control-item">
+                    <span>Steam Level</span>
+                    <input type="range" class="range-slider" id="steam-slider" min="0" max="100" value="0">
+                    <span class="range-value" id="steam-value">0%</span>
+                </div>
+                <div class="control-item">
+                    <span>Solenoid Valve</span>
+                    <label class="switch">
+                        <input type="checkbox" id="solenoid-toggle">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -102,7 +102,7 @@
             </div>
 
             <div class="control-group">
-                <h3>Pressure Sensor</h3>
+                <h3>Steam Pressure</h3>
                 <div class="control-item">
                     <span>Current Pressure</span>
                     <span id="pressure-value">0.0 kPa</span>
@@ -110,10 +110,11 @@
                 <div class="gauge">
                     <div class="gauge-fill" id="pressure-gauge" style="width: 0%"></div>
                 </div>
-            </div>
-
-            <div class="control-group">
+            </div>            <div class="control-group">
                 <h3>Presets</h3>
+                <div class="touch-instructions" id="touch-instructions">
+                    💡 Tip: Long press presets for options, double-tap to edit
+                </div>
                 <div id="presets-container" class="preset-container">
                     <!-- Presets will be dynamically generated here -->
                 </div>
@@ -128,13 +129,15 @@
     <div id="context-menu" class="context-menu">
         <div class="context-menu-item" id="edit-preset">Edit Preset</div>
         <div class="context-menu-item" id="delete-preset">Delete Preset</div>
-    </div>
-
-    <!-- Preset Dialog Modal -->
+    </div>    <!-- Preset Dialog Modal -->
     <div id="preset-modal" class="modal">
         <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <h3 id="modal-title">Save Preset</h3>
+            <span class="close-modal">&times;</span>            <div class="modal-header">
+                <h3 id="modal-title">Save Preset</h3>
+                <button class="button danger delete-preset-btn" id="modal-delete-preset" style="display: none;" title="Delete this preset">
+                    🗑️
+                </button>
+            </div>
             <div class="form-group">
                 <label for="preset-name">Preset Name:</label>
                 <input type="text" id="preset-name" placeholder="Enter preset name">

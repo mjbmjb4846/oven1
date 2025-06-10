@@ -66,23 +66,43 @@ class TemperatureChart {
     getTempUnitSymbol() {
         return this.isFahrenheit ? '°F' : '°C';
     }
-    
-    setupMouseEvents() {
+      setupMouseEvents() {
+        // Mouse events for desktop
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseleave', () => this.handleMouseLeave());
+        
+        // Touch events for mobile/tablet
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.addEventListener('touchend', () => this.handleMouseLeave());
+        this.canvas.addEventListener('touchcancel', () => this.handleMouseLeave());
     }
     
-    handleMouseMove(e) {
+    handleTouchStart(e) {
+        e.preventDefault();
+        // Convert touch to mouse-like coordinates
+        const touch = e.touches[0];
+        this.handleInteraction(touch);
+    }
+    
+    handleTouchMove(e) {
+        e.preventDefault();
+        // Convert touch to mouse-like coordinates
+        const touch = e.touches[0];
+        this.handleInteraction(touch);
+    }
+    
+    handleInteraction(pointerEvent) {
         const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const x = pointerEvent.clientX - rect.left;
+        const y = pointerEvent.clientY - rect.top;
         
         const padding = 50; // Increased padding to match drawLabels
         const chartWidth = this.width - 2 * padding;
         
-        // Check if mouse is within the chart area
+        // Check if pointer is within the chart area
         if (x >= padding && x <= this.width - padding && y >= padding && y <= this.height - padding) {
-            // Calculate which data point the mouse is closest to
+            // Calculate which data point the pointer is closest to
             const relativeX = x - padding;
             const dataIndex = Math.round((relativeX / chartWidth) * (this.data.length - 1));
             
@@ -94,6 +114,9 @@ class TemperatureChart {
         } else {
             this.handleMouseLeave();
         }
+    }
+      handleMouseMove(e) {
+        this.handleInteraction(e);
     }
     
     handleMouseLeave() {
@@ -378,12 +401,15 @@ class TemperatureChart {
     update() {
         this.draw();
     }
-    
-    // Destroy method for cleanup
+      // Destroy method for cleanup
     destroy() {
         // Remove event listeners
         this.canvas.removeEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.removeEventListener('mouseleave', () => this.handleMouseLeave());
+        this.canvas.removeEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.removeEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.removeEventListener('touchend', () => this.handleMouseLeave());
+        this.canvas.removeEventListener('touchcancel', () => this.handleMouseLeave());
         window.removeEventListener('resize', () => this.setupCanvas());
         // Canvas will be cleaned up by DOM
     }

@@ -41,6 +41,7 @@ const presetDescriptionInput = document.getElementById('preset-description');
 const cancelPresetBtn = document.getElementById('cancel-preset');
 const confirmPresetBtn = document.getElementById('confirm-preset');
 const closeModalBtn = document.querySelector('.close-modal');
+const modalDeleteBtn = document.getElementById('modal-delete-preset');
 
 // Chart initialization - Custom implementation for ARM compatibility
 const tempChartCanvas = document.getElementById('temp-chart');
@@ -228,10 +229,110 @@ function renderPresets() {
         presetBtn.dataset.presetId = id;
         presetBtn.innerHTML = `${preset.name}<span class="preset-desc">(${preset.description || ''})</span>`;
         
+        // Touch and click tracking variables for this specific button
+        let touchTimer = null;
+        let touchStart = null;
+        let hasMoved = false;
+        let isLongPress = false;
+        
         // Add event listeners
-        presetBtn.addEventListener('click', () => applyPreset(id));
+        presetBtn.addEventListener('click', (e) => {
+            // Prevent click if it was a long press
+            if (!isLongPress) {
+                applyPreset(id);
+            }
+            isLongPress = false; // Reset for next interaction
+        });
+        
+        // Right-click context menu (desktop)
         presetBtn.addEventListener('contextmenu', (e) => showContextMenu(e, id, presetBtn));
-        presetBtn.addEventListener('dblclick', (e) => showEditPresetModal(id));
+        
+        // Double-click for editing (desktop)
+        presetBtn.addEventListener('dblclick', (e) => {
+            e.preventDefault(); // Prevent any other actions
+            showEditPresetModal(id);
+        });
+        
+        // Touch events for mobile/tablet support
+        presetBtn.addEventListener('touchstart', (e) => {
+            touchStart = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY,
+                time: Date.now()
+            };
+            hasMoved = false;
+            isLongPress = false;
+            
+            // Start long press timer
+            touchTimer = setTimeout(() => {
+                if (!hasMoved && touchStart) {
+                    isLongPress = true;
+                    // Trigger haptic feedback if available
+                    if (navigator.vibrate) {
+                        navigator.vibrate(50);
+                    }
+                    // Create a fake right-click event for the context menu
+                    const contextEvent = new MouseEvent('contextmenu', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: touchStart.x,
+                        clientY: touchStart.y
+                    });
+                    showContextMenu(contextEvent, id, presetBtn);
+                }
+            }, 500); // 500ms long press
+        });
+        
+        presetBtn.addEventListener('touchmove', (e) => {
+            if (touchStart) {
+                const deltaX = Math.abs(e.touches[0].clientX - touchStart.x);
+                const deltaY = Math.abs(e.touches[0].clientY - touchStart.y);
+                
+                // If finger moved more than 10px, cancel long press
+                if (deltaX > 10 || deltaY > 10) {
+                    hasMoved = true;
+                    if (touchTimer) {
+                        clearTimeout(touchTimer);
+                        touchTimer = null;
+                    }
+                }
+            }
+        });
+        
+        presetBtn.addEventListener('touchend', (e) => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+            
+            // Handle double-tap for editing (touch equivalent of double-click)
+            if (!hasMoved && !isLongPress && touchStart) {
+                const timeSinceStart = Date.now() - touchStart.time;
+                
+                // Check for quick double-tap (within 300ms of each other)
+                if (timeSinceStart < 300 && presetBtn.lastTapTime && 
+                    (Date.now() - presetBtn.lastTapTime) < 300) {
+                    e.preventDefault();
+                    showEditPresetModal(id);
+                    presetBtn.lastTapTime = null; // Reset to prevent triple-tap issues
+                    return;
+                }
+                
+                presetBtn.lastTapTime = Date.now();
+            }
+            
+            touchStart = null;
+        });
+        
+        presetBtn.addEventListener('touchcancel', () => {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+            touchStart = null;
+            hasMoved = false;
+            isLongPress = false;
+        });
         
         // Add drag-and-drop event listeners
         presetBtn.setAttribute('draggable', 'true');
@@ -241,6 +342,9 @@ function renderPresets() {
         presetBtn.addEventListener('dragenter', handleDragEnter);
         presetBtn.addEventListener('dragleave', handleDragLeave);
         presetBtn.addEventListener('drop', handleDrop);
+        
+        // Touch-based drag and drop alternative using long press
+        addTouchDragAndDrop(presetBtn, id);
         
         presetsContainer.appendChild(presetBtn);
     });
@@ -254,14 +358,47 @@ function showContextMenu(e, presetId, element) {
     selectedPresetElement = element;
     currentEditingPresetId = presetId;
     
-    // Position the context menu
-    contextMenu.style.left = `${e.clientX}px`;
-    contextMenu.style.top = `${e.clientY}px`;
+    // Position the context menu with viewport bounds checking
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    // Show the menu temporarily to get its dimensions
+    contextMenu.style.visibility = 'hidden';
     contextMenu.style.display = 'block';
+    const menuRect = contextMenu.getBoundingClientRect();
+    contextMenu.style.display = 'none';
+    contextMenu.style.visibility = 'visible';
+    
+    // Check if menu would go off the right edge of the screen
+    if (x + menuRect.width > window.innerWidth) {
+        x = window.innerWidth - menuRect.width - 10;
+    }
+    
+    // Check if menu would go off the bottom edge of the screen
+    if (y + menuRect.height > window.innerHeight) {
+        y = window.innerHeight - menuRect.height - 10;
+    }
+    
+    // Ensure menu doesn't go off the left or top edges
+    x = Math.max(10, x);
+    y = Math.max(10, y);
+    
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.style.display = 'block';
+    
+    // Add visual feedback for touch devices
+    if (element && 'ontouchstart' in window) {
+        element.classList.add('long-press-active');
+        setTimeout(() => {
+            element.classList.remove('long-press-active');
+        }, 200);
+    }
     
     // Add global click event to close the menu when clicking elsewhere
     setTimeout(() => {
         document.addEventListener('click', hideContextMenu);
+        document.addEventListener('touchstart', hideContextMenu);
     }, 0);
 }
 
@@ -269,6 +406,7 @@ function showContextMenu(e, presetId, element) {
 function hideContextMenu() {
     contextMenu.style.display = 'none';
     document.removeEventListener('click', hideContextMenu);
+    document.removeEventListener('touchstart', hideContextMenu);
 }
 
 // Show the modal for creating a new preset
@@ -277,6 +415,9 @@ function showCreatePresetModal() {
     presetNameInput.value = '';
     presetDescriptionInput.value = '';
     currentEditingPresetId = null;
+    
+    // Hide delete button for new presets
+    modalDeleteBtn.style.display = 'none';
     
     // Display the modal
     presetModal.style.display = 'flex';
@@ -292,6 +433,9 @@ function showEditPresetModal(presetId) {
     presetDescriptionInput.value = preset.description || '';
     currentEditingPresetId = presetId;
     
+    // Show delete button for existing presets
+    modalDeleteBtn.style.display = 'block';
+    
     // Display the modal
     presetModal.style.display = 'flex';
 }
@@ -301,6 +445,12 @@ function hidePresetModal() {
     presetModal.style.display = 'none';
     presetNameInput.value = '';
     presetDescriptionInput.value = '';
+    
+    // Hide delete button when closing modal
+    modalDeleteBtn.style.display = 'none';
+    
+    // Clear the current editing preset ID
+    currentEditingPresetId = null;
 }
 
 // Save the current settings as a new preset
@@ -462,6 +612,29 @@ confirmPresetBtn.addEventListener('click', createPreset);
 cancelPresetBtn.addEventListener('click', hidePresetModal);
 closeModalBtn.addEventListener('click', hidePresetModal);
 
+// Add event listener for modal delete button
+modalDeleteBtn.addEventListener('click', () => {
+    if (currentEditingPresetId) {
+        // Add confirmation for touch devices
+        const isTouch = 'ontouchstart' in window;
+        const confirmMessage = `Are you sure you want to delete "${presets[currentEditingPresetId]?.name || 'this preset'}"?`;
+        
+        if (isTouch) {
+            // Use a more touch-friendly confirmation
+            if (confirm(confirmMessage)) {
+                deletePreset(currentEditingPresetId);
+                hidePresetModal();
+            }
+        } else {
+            // Standard confirmation for desktop
+            if (confirm(confirmMessage)) {
+                deletePreset(currentEditingPresetId);
+                hidePresetModal();
+            }
+        }
+    }
+});
+
 // Start the system
 function startSystem() {
     systemRunning = true;
@@ -614,8 +787,30 @@ ipcRenderer.on('recording-interval-updated', (event, interval) => {
 function init() {
     renderPresets();
     
+    // Detect touch capability and show/hide instructions
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const touchInstructions = document.getElementById('touch-instructions');
+    
+    if (isTouchDevice && touchInstructions) {
+        // Show instructions for 5 seconds, then fade out
+        setTimeout(() => {
+            touchInstructions.style.transition = 'opacity 1s ease-out';
+            touchInstructions.style.opacity = '0';
+            setTimeout(() => {
+                touchInstructions.style.display = 'none';
+            }, 1000);
+        }, 5000);
+    }
+    
     // Add event listener to document to handle clicks outside context menu
     document.addEventListener('click', (e) => {
+        if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
+            hideContextMenu();
+        }
+    });
+    
+    // Add touch event listener for context menu hiding
+    document.addEventListener('touchstart', (e) => {
         if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
             hideContextMenu();
         }
@@ -842,3 +1037,129 @@ function makeRangeValueEditable(element, slider, min, max, unit = '', isTemperat
 makeRangeValueEditable(tempValue, tempSlider, 25, 320, '°C', true); // true indicates temperature field
 makeRangeValueEditable(steamValue, steamSlider, 0, 100, '%');
 makeRangeValueEditable(fanValue, fanSlider, 0, 100, '%');
+
+// Touch-based drag and drop alternative using long press
+function addTouchDragAndDrop(element, presetId) {
+    let isDragging = false;
+    let dragStartPosition = null;
+    let draggedElement = null;
+    
+    function createDragPreview(element) {
+        const preview = element.cloneNode(true);
+        preview.style.position = 'fixed';
+        preview.style.opacity = '0.8';
+        preview.style.transform = 'scale(0.9)';
+        preview.style.zIndex = '9999';
+        preview.style.pointerEvents = 'none';
+        preview.style.transition = 'none';
+        preview.classList.add('drag-preview');
+        document.body.appendChild(preview);
+        return preview;
+    }
+    
+    function updateDragPreview(preview, x, y) {
+        if (preview) {
+            preview.style.left = (x - 50) + 'px';
+            preview.style.top = (y - 25) + 'px';
+        }
+    }
+    
+    function removeDragPreview(preview) {
+        if (preview && preview.parentNode) {
+            preview.parentNode.removeChild(preview);
+        }
+    }
+    
+    function findDropTarget(x, y) {
+        const elements = document.elementsFromPoint(x, y);
+        return elements.find(el => 
+            el !== draggedElement && 
+            el.dataset.presetId && 
+            el.classList.contains('button')
+        );
+    }
+    
+    element.addEventListener('touchstart', (e) => {
+        // Only start drag if this is not interfering with long press for context menu
+        setTimeout(() => {
+            if (!element.classList.contains('long-press-active')) {
+                dragStartPosition = {
+                    x: e.touches[0].clientX,
+                    y: e.touches[0].clientY
+                };
+            }
+        }, 600); // Start after long press threshold
+    });
+    
+    element.addEventListener('touchmove', (e) => {
+        if (dragStartPosition && !isDragging) {
+            const deltaX = Math.abs(e.touches[0].clientX - dragStartPosition.x);
+            const deltaY = Math.abs(e.touches[0].clientY - dragStartPosition.y);
+            
+            // Start dragging if moved more than 15px
+            if (deltaX > 15 || deltaY > 15) {
+                isDragging = true;
+                draggedElement = createDragPreview(element);
+                element.style.opacity = '0.5';
+                
+                // Provide haptic feedback
+                if (navigator.vibrate) {
+                    navigator.vibrate(30);
+                }
+            }
+        }
+        
+        if (isDragging && draggedElement) {
+            e.preventDefault();
+            updateDragPreview(draggedElement, e.touches[0].clientX, e.touches[0].clientY);
+            
+            // Highlight potential drop targets
+            const dropTarget = findDropTarget(e.touches[0].clientX, e.touches[0].clientY);
+            document.querySelectorAll('.button[data-preset-id]').forEach(btn => {
+                btn.classList.remove('drag-over');
+            });
+            if (dropTarget && dropTarget !== element) {
+                dropTarget.classList.add('drag-over');
+            }
+        }
+    });
+    
+    element.addEventListener('touchend', (e) => {
+        if (isDragging) {
+            e.preventDefault();
+            
+            const dropTarget = findDropTarget(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+            
+            if (dropTarget && dropTarget !== element) {
+                // Perform the reorder
+                const draggedId = element.dataset.presetId;
+                const targetId = dropTarget.dataset.presetId;
+                
+                const draggedIndex = presetOrder.indexOf(draggedId);
+                const targetIndex = presetOrder.indexOf(targetId);
+                
+                presetOrder.splice(draggedIndex, 1);
+                presetOrder.splice(targetIndex, 0, draggedId);
+                
+                savePresetsToStorage();
+                renderPresets();
+                
+                // Provide haptic feedback for successful drop
+                if (navigator.vibrate) {
+                    navigator.vibrate([50, 50, 50]);
+                }
+            }
+            
+            // Cleanup
+            removeDragPreview(draggedElement);
+            element.style.opacity = '';
+            document.querySelectorAll('.button[data-preset-id]').forEach(btn => {
+                btn.classList.remove('drag-over');
+            });
+        }
+        
+        isDragging = false;
+        dragStartPosition = null;
+        draggedElement = null;
+    });
+}
