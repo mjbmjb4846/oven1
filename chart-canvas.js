@@ -332,7 +332,7 @@ class TemperatureChart {
                 lineColor = this.hoverLineColor;
                 const timeAgo = this.data.length - 1 - this.hoveredDataIndex;
                 const convertedTemp = this.convertTempForDisplay(displayTemp);
-                labelText = `${Math.round(convertedTemp)}${this.getTempUnitSymbol()} (T-${timeAgo})`;
+                labelText = `${Math.round(convertedTemp)}${this.getTempUnitSymbol()} (t-${timeAgo})`;
             } else {
                 // Show current temperature
                 displayTemp = this.data[this.data.length - 1];
