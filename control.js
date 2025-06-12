@@ -147,11 +147,6 @@ let solenoidValve = null;
 let pressureSensor = null;
 let tempProbe = null;
 
-// CSV data recording
-let csvFilePath = null;
-let dataRecordingInterval = null;
-let recordingIntervalSeconds = 5;
-
 // Check if running on a supported board
 const isCompatibleBoard = boardInfo.type !== 'unknown';
 
@@ -886,31 +881,82 @@ function readPressureSensor() {
   }
 }
 
-// Initialize CSV data recording
+// Enhanced data recording variables
+let csvFilePath = null;
+let customStoragePath = null; // Custom folder path for CSV storage
+let dataRecordingInterval = null;
+let recordingIntervalSeconds = 5;
+let sessionStartTime = null;
+let lastSystemStartTime = null;
+let systemRuntime = 0; // Total cooking time in current session
+
+// System state variables for comprehensive logging
+let currentTemp = 25;
+let targetTemp = 150;
+let fanSpeed = 0;
+let steamLevel = 0;
+let heatingElementsOn = false;
+let solenoidValveOpen = false;
+let systemActive = false;
+let timerEnabled = false;
+let timerActive = false;
+let timerRemainingSeconds = 0;
+let timerTotalSeconds = 0;
+
+// Initialize CSV data recording with comprehensive headers
 function initializeDataRecording() {
   const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-  
-  // Use a more reliable directory path that works for both regular user and root
+  sessionStartTime = new Date();
+    // Use custom storage path if available, otherwise use Downloads folder
   let downloadsFolder;
   
-  // Try to create and use user's Downloads folder first
-  try {
-    downloadsFolder = path.join(os.homedir(), 'Downloads');
-    fs.mkdirSync(downloadsFolder, { recursive: true });
-  } catch (error) {
-    console.log('Could not access user Downloads folder, using /tmp instead');
-    downloadsFolder = '/tmp';
+  if (customStoragePath && fs.existsSync(customStoragePath)) {
+    // Use the custom storage path
+    downloadsFolder = customStoragePath;
+    console.log(`Using custom storage path: ${customStoragePath}`);
+  } else {
+    // Try to create and use user's Downloads folder first
+    try {
+      downloadsFolder = path.join(os.homedir(), 'Downloads');
+      fs.mkdirSync(downloadsFolder, { recursive: true });
+    } catch (error) {
+      console.log('Could not access user Downloads folder, using /tmp instead');
+      downloadsFolder = '/tmp';
+    }
   }
   
   csvFilePath = path.join(downloadsFolder, `oven_data_${timestamp}.csv`);
   
   try {
-    // Create CSV header with board information
-    const header = `# Board: ${boardInfo.model}, GPIO Library: ${boardInfo.gpioLibrary}\n` +
-                  'Timestamp,Temperature (°C),Pressure (V),Heating,Fan (%),Steam\n';
+    // Get system information
+    const osInfo = {
+      platform: os.platform(),
+      arch: os.arch(),
+      release: os.release(),
+      hostname: os.hostname(),
+      uptime: os.uptime(),
+      nodeVersion: process.version
+    };
+    
+    // Create comprehensive CSV header with system and board information
+    const header = `# Oven Control System Data Log\n` +
+                  `# Session Start: ${sessionStartTime.toISOString()}\n` +
+                  `# System: ${osInfo.platform} ${osInfo.arch} ${osInfo.release}\n` +
+                  `# Hostname: ${osInfo.hostname}\n` +
+                  `# Node.js: ${osInfo.nodeVersion}\n` +
+                  `# Board: ${boardInfo.model}\n` +
+                  `# GPIO Library: ${boardInfo.gpioLibrary || 'Simulated'}\n` +
+                  `# Simulation Mode: ${!isCompatibleBoard}\n` +
+                  `# Recording Interval: ${recordingIntervalSeconds}s\n` +
+                  `#\n` +
+                  'Timestamp,Session_Runtime_s,Cooking_Runtime_s,Current_Temp_C,Target_Temp_C,Pressure_V,' +
+                  'Heating_Status,Fan_Speed_Pct,Steam_Status,Steam_Level_Pct,System_Active,' +
+                  'Timer_Enabled,Timer_Active,Timer_Remaining_s,Timer_Total_s,' +
+                  'Simulation_Mode,OS_Platform,OS_Arch,Board_Type,GPIO_Library\n';
+    
     fs.writeFileSync(csvFilePath, header);
     
-    console.log(`Data recording initialized. CSV file: ${csvFilePath}`);
+    console.log(`Enhanced data recording initialized. CSV file: ${csvFilePath}`);
     return true;
   } catch (error) {
     console.error('Failed to initialize data recording:', error);
@@ -918,7 +964,18 @@ function initializeDataRecording() {
     // Fall back to /tmp if initial path failed
     try {
       csvFilePath = path.join('/tmp', `oven_data_${timestamp}.csv`);
-      fs.writeFileSync(csvFilePath, header);
+      const fallbackHeader = `# Oven Control System Data Log (Fallback Location)\n` +
+                            `# Session Start: ${sessionStartTime.toISOString()}\n` +
+                            `# System: ${os.platform()} ${os.arch()}\n` +
+                            `# Board: ${boardInfo.model}\n` +
+                            `# Simulation Mode: ${!isCompatibleBoard}\n` +
+                            `#\n` +
+                            'Timestamp,Session_Runtime_s,Cooking_Runtime_s,Current_Temp_C,Target_Temp_C,Pressure_V,' +
+                            'Heating_Status,Fan_Speed_Pct,Steam_Status,Steam_Level_Pct,System_Active,' +
+                            'Timer_Enabled,Timer_Active,Timer_Remaining_s,Timer_Total_s,' +
+                            'Simulation_Mode,OS_Platform,OS_Arch,Board_Type,GPIO_Library\n';
+      
+      fs.writeFileSync(csvFilePath, fallbackHeader);
       console.log(`Fallback data recording initialized. CSV file: ${csvFilePath}`);
       return true;
     } catch (fallbackError) {
@@ -928,13 +985,46 @@ function initializeDataRecording() {
   }
 }
 
-// Record data point to CSV
-function recordDataPoint(temperature, pressure, heating, fan, steam) {
+// Record comprehensive data point to CSV
+function recordDataPoint(temperature, pressure, heating, fan, steam, steamLvl, sysActive, timerEn, timerAct, timerRem, timerTot) {
   if (!csvFilePath) return false;
   
   try {
-    const timestamp = new Date().toISOString();
-    const dataPoint = `${timestamp},${temperature.toFixed(2)},${pressure.toFixed(2)},${heating ? 'ON' : 'OFF'},${fan},${steam ? 'ON' : 'OFF'}\n`;
+    const now = new Date();
+    const timestamp = now.toISOString();
+    
+    // Calculate session runtime
+    const sessionRuntime = sessionStartTime ? Math.floor((now - sessionStartTime) / 1000) : 0;
+    
+    // Calculate cooking runtime (time since system was last started)
+    let cookingRuntime = 0;
+    if (lastSystemStartTime && sysActive) {
+      cookingRuntime = Math.floor((now - lastSystemStartTime) / 1000);
+    }
+    
+    // Prepare comprehensive data point
+    const dataPoint = [
+      timestamp,                                    // Timestamp
+      sessionRuntime,                              // Session_Runtime_s
+      cookingRuntime,                              // Cooking_Runtime_s
+      temperature.toFixed(2),                      // Current_Temp_C
+      targetTemp.toFixed(2),                       // Target_Temp_C
+      pressure.toFixed(3),                         // Pressure_V
+      heating ? 'ON' : 'OFF',                      // Heating_Status
+      fan.toFixed(1),                              // Fan_Speed_Pct
+      steam ? 'ON' : 'OFF',                        // Steam_Status
+      steamLvl.toFixed(1),                         // Steam_Level_Pct
+      sysActive ? 'ACTIVE' : 'INACTIVE',           // System_Active
+      timerEn ? 'ENABLED' : 'DISABLED',            // Timer_Enabled
+      timerAct ? 'RUNNING' : 'STOPPED',            // Timer_Active
+      timerRem,                                    // Timer_Remaining_s
+      timerTot,                                    // Timer_Total_s
+      !isCompatibleBoard ? 'SIM' : 'REAL',         // Simulation_Mode
+      os.platform(),                               // OS_Platform
+      os.arch(),                                   // OS_Arch
+      boardInfo.type,                              // Board_Type
+      boardInfo.gpioLibrary || 'simulated'         // GPIO_Library
+    ].join(',') + '\n';
     
     fs.appendFileSync(csvFilePath, dataPoint);
     return true;
@@ -958,20 +1048,37 @@ function startDataRecording(callback, intervalSeconds = 5) {
     const temperature = isCompatibleBoard ? readTemperatureProbe() : currentTemp;
     const pressure = readPressureSensor();
     
-    // Record data point
+    // Record comprehensive data point with all system state
     recordDataPoint(
-      temperature,
-      pressure,
-      heatingElementsOn,
-      fanSpeed,
-      solenoidValveOpen
+      temperature,           // Current temperature
+      pressure,             // Pressure reading
+      heatingElementsOn,    // Heating status
+      fanSpeed,             // Fan speed percentage
+      solenoidValveOpen,    // Steam status
+      steamLevel,           // Steam level percentage
+      systemActive,         // System active status
+      timerEnabled,         // Timer enabled
+      timerActive,          // Timer running
+      timerRemainingSeconds, // Timer remaining
+      timerTotalSeconds     // Timer total duration
     );
     
     if (callback) {
       callback({
         temperature,
         pressure,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        heating: heatingElementsOn,
+        fan: fanSpeed,
+        steam: solenoidValveOpen,
+        steamLevel: steamLevel,
+        systemActive: systemActive,
+        timer: {
+          enabled: timerEnabled,
+          active: timerActive,
+          remaining: timerRemainingSeconds,
+          total: timerTotalSeconds
+        }
       });
     }
   }, recordingIntervalSeconds * 1000);
@@ -990,8 +1097,36 @@ function updateRecordingInterval(intervalSeconds) {
     clearInterval(dataRecordingInterval);
     startDataRecording(null, recordingIntervalSeconds);
   }
+    return recordingIntervalSeconds;
+}
+
+// Set custom storage path for CSV files
+function setCustomStoragePath(folderPath) {
+  if (!folderPath) {
+    customStoragePath = null;
+    console.log('Custom storage path cleared, using default Downloads folder');
+    return;
+  }
   
-  return recordingIntervalSeconds;
+  // Validate the path exists
+  if (!fs.existsSync(folderPath)) {
+    console.error(`Custom storage path does not exist: ${folderPath}`);
+    return false;
+  }
+  
+  // Test write permissions
+  try {
+    const testFile = path.join(folderPath, '.test_write');
+    fs.writeFileSync(testFile, 'test');
+    fs.unlinkSync(testFile);
+    
+    customStoragePath = folderPath;
+    console.log(`Custom storage path set to: ${folderPath}`);
+    return true;
+  } catch (error) {
+    console.error(`Cannot write to custom storage path: ${folderPath}`, error.message);
+    return false;
+  }
 }
 
 // Stop data recording
@@ -1048,11 +1183,35 @@ function simulateTemperatureControl(targetTemp, currentTemp) {
   return currentTemp + delta;
 }
 
-// System state variables
-let currentTemp = 25;
-let fanSpeed = 0;
-let heatingElementsOn = false;
-let solenoidValveOpen = false;
+// Update current temperature for data recording purposes
+function updateCurrentTemperature(temperature) {
+  currentTemp = temperature;
+}
+
+// Update system state variables for comprehensive logging
+function updateSystemState(state) {
+  if (state.fanSpeed !== undefined) fanSpeed = state.fanSpeed;
+  if (state.steamLevel !== undefined) steamLevel = state.steamLevel;
+  if (state.heatingElementsOn !== undefined) heatingElementsOn = state.heatingElementsOn;
+  if (state.solenoidValveOpen !== undefined) solenoidValveOpen = state.solenoidValveOpen;
+  if (state.systemActive !== undefined) systemActive = state.systemActive;
+  if (state.targetTemp !== undefined) targetTemp = state.targetTemp;
+  
+  // Update system start time tracking
+  if (state.systemActive && !lastSystemStartTime) {
+    lastSystemStartTime = new Date();
+  } else if (!state.systemActive) {
+    lastSystemStartTime = null;
+  }
+}
+
+// Update timer state variables
+function updateTimerState(timerState) {
+  if (timerState.enabled !== undefined) timerEnabled = timerState.enabled;
+  if (timerState.active !== undefined) timerActive = timerState.active;
+  if (timerState.remaining !== undefined) timerRemainingSeconds = timerState.remaining;
+  if (timerState.total !== undefined) timerTotalSeconds = timerState.total;
+}
 
 module.exports = {
   initializeGPIO,
@@ -1069,6 +1228,10 @@ module.exports = {
   startDataRecording,
   stopDataRecording,
   updateRecordingInterval,
+  setCustomStoragePath,
+  updateCurrentTemperature,
+  updateSystemState,
+  updateTimerState,
   systemEvents,
   isCompatibleBoard,
   boardInfo

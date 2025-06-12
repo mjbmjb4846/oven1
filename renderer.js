@@ -23,10 +23,23 @@ const pressureGauge = document.getElementById('pressure-gauge');
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 
+// Timer DOM elements
+const timerDisplay = document.getElementById('timer-display');
+const timerHours = document.getElementById('timer-hours');
+const timerMinutes = document.getElementById('timer-minutes');
+const timerSeconds = document.getElementById('timer-seconds');
+const timerEnable = document.getElementById('timer-enable');
+const timerControlGroup = document.querySelector('.timer-control-group');
+const timerContent = document.getElementById('timer-content');
+const timerSettings = document.getElementById('timer-settings');
+const timerSetBtn = document.getElementById('timer-set-btn');
+const timerCancelBtn = document.getElementById('timer-cancel-btn');
+
 // New DOM elements for simulation and recording
 const simulationIndicator = document.getElementById('simulation-indicator');
 const recordingInterval = document.getElementById('recording-interval');
 const recordingStatusText = document.getElementById('recording-status-text');
+const storageFolderBtn = document.getElementById('storage-folder-btn');
 
 // Preset Management DOM Elements
 const presetsContainer = document.getElementById('presets-container');
@@ -64,6 +77,13 @@ let fanSpeed = 0;
 let steamLevel = 0;
 let pressureLevel = 0;
 let isRecording = true; // Default to true as we start recording on app launch
+
+// Timer state
+let timerEnabled = false; // Start disabled
+let timerActive = false;
+let timerRemainingSeconds = 0;
+let timerTotalSeconds = 0;
+let timerInterval = null;
 
 // Temperature unit toggle
 let isFahrenheit = false;
@@ -149,29 +169,49 @@ function initializePresets() {
     
     if (savedPresets) {
         presets = JSON.parse(savedPresets);
-    } else {
-        // Default presets
+    } else {        // Default presets
         presets = {
             chicken: {
                 name: 'Chicken',
                 description: 'For cooking chicken',
                 temp: 180,
                 fan: 40,
-                steam: false
+                steam: false,
+                timer: {
+                    enabled: true,
+                    hours: 1,
+                    minutes: 30,
+                    seconds: 0,
+                    totalSeconds: 5400
+                }
             },
             beef: {
                 name: 'Beef',
                 description: 'For cooking beef', 
                 temp: 200,
                 fan: 60,
-                steam: false
+                steam: false,
+                timer: {
+                    enabled: true,
+                    hours: 2,
+                    minutes: 0,
+                    seconds: 0,
+                    totalSeconds: 7200
+                }
             },
             apple: {
                 name: 'Apple',
                 description: 'For drying apple slices',
                 temp: 75,
                 fan: 100,
-                steam: false
+                steam: false,
+                timer: {
+                    enabled: true,
+                    hours: 8,
+                    minutes: 0,
+                    seconds: 0,
+                    totalSeconds: 28800
+                }
             }
         };
     }
@@ -227,7 +267,16 @@ function renderPresets() {
         const presetBtn = document.createElement('button');
         presetBtn.className = 'button';
         presetBtn.dataset.presetId = id;
-        presetBtn.innerHTML = `${preset.name}<span class="preset-desc">(${preset.description || ''})</span>`;
+          // Create timer display string
+        let timerDisplay = '';
+        if (preset.timer && preset.timer.enabled) {
+            const hours = preset.timer.hours || 0;
+            const minutes = preset.timer.minutes || 0;
+            const seconds = preset.timer.seconds || 0;
+            timerDisplay = `<span class="timer-info">⏱️${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}</span>`;
+        }
+        
+        presetBtn.innerHTML = `${preset.name}<span class="preset-desc">(${preset.description || ''}${timerDisplay})</span>`;
         
         // Touch and click tracking variables for this specific button
         let touchTimer = null;
@@ -463,13 +512,26 @@ function createPreset() {
         return;
     }
     
+    // Get current timer settings
+    const currentTimerHours = parseInt(timerHours.value) || 0;
+    const currentTimerMinutes = parseInt(timerMinutes.value) || 0;
+    const currentTimerSeconds = parseInt(timerSeconds.value) || 0;
+    const currentTimerTotal = currentTimerHours * 3600 + currentTimerMinutes * 60 + currentTimerSeconds;
+    
     // Create preset object with current settings - save slider values regardless of toggle state
     const preset = {
         name: name,
         description: description,
         temp: parseInt(tempSlider.value),
         fan: parseInt(fanSlider.value),     // Always save the fan slider value regardless of toggle state
-        steam: parseInt(steamSlider.value)  // Save steam slider value instead of toggle state
+        steam: parseInt(steamSlider.value), // Save steam slider value instead of toggle state
+        timer: {
+            enabled: timerEnabled,
+            hours: currentTimerHours,
+            minutes: currentTimerMinutes,
+            seconds: currentTimerSeconds,
+            totalSeconds: currentTimerTotal
+        }
     };
     
     // If editing, update the existing preset
@@ -518,6 +580,35 @@ function applyPreset(presetName) {
     fanSlider.value = preset.fan || 0;
     fanSpeed = preset.fan || 0;
     fanValue.textContent = `${fanSpeed}%`;
+    
+    // Apply timer settings if they exist
+    if (preset.timer) {
+        // Set timer enabled state
+        timerEnable.checked = preset.timer.enabled || false;
+        timerEnabled = preset.timer.enabled || false;
+        
+        // Set timer values
+        timerHours.value = preset.timer.hours || 0;
+        timerMinutes.value = preset.timer.minutes || 0;
+        timerSeconds.value = preset.timer.seconds || 0;
+        
+        // Update timer total seconds for internal tracking
+        timerTotalSeconds = preset.timer.totalSeconds || 0;
+        
+        // Apply timer enable state and update display
+        toggleTimerEnable();
+        updateTimerDisplay();
+    } else {
+        // If no timer data in preset, disable timer
+        timerEnable.checked = false;
+        timerEnabled = false;
+        timerHours.value = 0;
+        timerMinutes.value = 0;
+        timerSeconds.value = 0;
+        timerTotalSeconds = 0;
+        toggleTimerEnable();
+        updateTimerDisplay();
+    }
     
     // Update status indicators - only heating should be true, fan keeps its state
     updateHeatingStatus(true);
@@ -597,6 +688,62 @@ fanSlider.addEventListener('input', () => {
 startBtn.addEventListener('click', startSystem);
 stopBtn.addEventListener('click', stopSystem);
 
+// Timer event listeners
+timerEnable.addEventListener('change', toggleTimerEnable);
+
+// Timer display click to show settings
+timerDisplay.addEventListener('click', showTimerSettings);
+
+// Timer input event listeners
+timerHours.addEventListener('input', () => {
+    // Ensure hours stay within 0-23 range
+    let value = parseInt(timerHours.value) || 0;
+    if (value > 23) {
+        timerHours.value = 23;
+    } else if (value < 0) {
+        timerHours.value = 0;
+    }
+});
+
+// Prevent event bubbling for timer inputs
+timerHours.addEventListener('click', (e) => e.stopPropagation());
+timerHours.addEventListener('focus', (e) => e.stopPropagation());
+timerHours.addEventListener('touchstart', (e) => e.stopPropagation());
+
+timerMinutes.addEventListener('input', () => {
+    // Ensure minutes stay within 0-59 range
+    let value = parseInt(timerMinutes.value) || 0;
+    if (value > 59) {
+        timerMinutes.value = 59;
+    } else if (value < 0) {
+        timerMinutes.value = 0;
+    }
+});
+
+// Prevent event bubbling for timer inputs
+timerMinutes.addEventListener('click', (e) => e.stopPropagation());
+timerMinutes.addEventListener('focus', (e) => e.stopPropagation());
+timerMinutes.addEventListener('touchstart', (e) => e.stopPropagation());
+
+timerSeconds.addEventListener('input', () => {
+    // Ensure seconds stay within 0-59 range
+    let value = parseInt(timerSeconds.value) || 0;
+    if (value > 59) {
+        timerSeconds.value = 59;
+    } else if (value < 0) {
+        timerSeconds.value = 0;
+    }
+});
+
+// Prevent event bubbling for timer inputs
+timerSeconds.addEventListener('click', (e) => e.stopPropagation());
+timerSeconds.addEventListener('focus', (e) => e.stopPropagation());
+timerSeconds.addEventListener('touchstart', (e) => e.stopPropagation());
+
+// Timer settings buttons
+timerSetBtn.addEventListener('click', setTimerValues);
+timerCancelBtn.addEventListener('click', hideTimerSettings);
+
 // Event listeners for preset management
 savePresetBtn.addEventListener('click', showCreatePresetModal);
 
@@ -611,6 +758,31 @@ deletePresetOption.addEventListener('click', () => {
 confirmPresetBtn.addEventListener('click', createPreset);
 cancelPresetBtn.addEventListener('click', hidePresetModal);
 closeModalBtn.addEventListener('click', hidePresetModal);
+
+// Prevent event bubbling for modal input fields
+presetNameInput.addEventListener('click', (e) => e.stopPropagation());
+presetNameInput.addEventListener('focus', (e) => e.stopPropagation());
+presetNameInput.addEventListener('touchstart', (e) => e.stopPropagation());
+
+presetDescriptionInput.addEventListener('click', (e) => e.stopPropagation());
+presetDescriptionInput.addEventListener('focus', (e) => e.stopPropagation());
+presetDescriptionInput.addEventListener('touchstart', (e) => e.stopPropagation());
+
+// Also protect the recording interval input
+recordingInterval.addEventListener('click', (e) => e.stopPropagation());
+recordingInterval.addEventListener('focus', (e) => e.stopPropagation());
+recordingInterval.addEventListener('touchstart', (e) => e.stopPropagation());
+
+// Storage folder selection button
+storageFolderBtn.addEventListener('click', () => {
+    ipcRenderer.send('select-storage-folder');
+});
+
+// Listen for storage folder updates
+ipcRenderer.on('storage-folder-updated', (event, folderPath) => {
+    // Optional: Update UI to show selected folder
+    storageFolderBtn.title = `CSV files saved to: ${folderPath}`;
+});
 
 // Add event listener for modal delete button
 modalDeleteBtn.addEventListener('click', () => {
@@ -635,8 +807,201 @@ modalDeleteBtn.addEventListener('click', () => {
     }
 });
 
+// Timer Functions
+function formatTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    // Always show HH:MM:SS format
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function updateTimerDisplay() {
+    if (timerActive) {
+        timerDisplay.textContent = formatTime(timerRemainingSeconds);
+        
+        // Update visual state based on remaining time
+        timerDisplay.classList.remove('running', 'warning', 'critical');
+        
+        if (timerRemainingSeconds > 60) {
+            timerDisplay.classList.add('running');
+        } else if (timerRemainingSeconds > 10) {
+            timerDisplay.classList.add('warning');
+        } else {
+            timerDisplay.classList.add('critical');
+        }
+    } else {
+        const inputHours = parseInt(timerHours.value) || 0;
+        const inputMinutes = parseInt(timerMinutes.value) || 0;
+        const inputSeconds = parseInt(timerSeconds.value) || 0;
+        const totalSeconds = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
+        timerDisplay.textContent = formatTime(totalSeconds);
+        timerDisplay.classList.remove('running', 'warning', 'critical');
+    }
+}
+
+function showTimerSettings() {
+    if (!timerEnabled || timerActive) return;
+    
+    // Populate inputs with current display values
+    const currentText = timerDisplay.textContent;
+    const parts = currentText.split(':');
+    
+    if (parts.length === 3) {
+        // HH:MM:SS format
+        timerHours.value = parseInt(parts[0]) || 0;
+        timerMinutes.value = parseInt(parts[1]) || 0;
+        timerSeconds.value = parseInt(parts[2]) || 0;
+    } else if (parts.length === 2) {
+        // MM:SS format
+        timerHours.value = 0;
+        timerMinutes.value = parseInt(parts[0]) || 0;
+        timerSeconds.value = parseInt(parts[1]) || 0;
+    }
+    
+    timerSettings.style.display = 'block';
+}
+
+function hideTimerSettings() {
+    timerSettings.style.display = 'none';
+}
+
+function setTimerValues() {
+    // Validate and normalize input values
+    let hours = Math.max(0, Math.min(23, parseInt(timerHours.value) || 0));
+    let minutes = Math.max(0, Math.min(59, parseInt(timerMinutes.value) || 0));
+    let seconds = Math.max(0, Math.min(59, parseInt(timerSeconds.value) || 0));
+    
+    // Update input fields with normalized values
+    timerHours.value = hours;
+    timerMinutes.value = minutes;
+    timerSeconds.value = seconds;
+    
+    // Calculate total seconds for the timer
+    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+    timerTotalSeconds = totalSeconds;
+    
+    // Send timer state to main process for CSV logging
+    ipcRenderer.send('timer-state', {
+        enabled: timerEnabled,
+        active: timerActive,
+        remaining: timerRemainingSeconds,
+        total: timerTotalSeconds
+    });
+    
+    updateTimerDisplay();
+    hideTimerSettings();
+}
+
+function startTimer() {
+    if (!timerEnabled) return;
+    
+    const inputHours = parseInt(timerHours.value) || 0;
+    const inputMinutes = parseInt(timerMinutes.value) || 0;
+    const inputSeconds = parseInt(timerSeconds.value) || 0;
+    timerTotalSeconds = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
+    
+    if (timerTotalSeconds <= 0) return;
+    
+    timerRemainingSeconds = timerTotalSeconds;
+    timerActive = true;
+    
+    // Send timer state to main process for CSV logging
+    ipcRenderer.send('timer-state', {
+        enabled: timerEnabled,
+        active: timerActive,
+        remaining: timerRemainingSeconds,
+        total: timerTotalSeconds
+    });
+    
+    timerInterval = setInterval(() => {
+        timerRemainingSeconds--;
+        updateTimerDisplay();
+        
+        // Send updated timer state every second
+        ipcRenderer.send('timer-state', {
+            enabled: timerEnabled,
+            active: timerActive,
+            remaining: timerRemainingSeconds,
+            total: timerTotalSeconds
+        });
+        
+        if (timerRemainingSeconds <= 0) {
+            stopTimer();
+            stopSystem(); // Automatically stop the oven when timer runs out
+        }
+    }, 1000);
+    
+    updateTimerDisplay();
+}
+
+function stopTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    timerActive = false;
+    timerRemainingSeconds = 0;
+    
+    // Send timer state to main process for CSV logging
+    ipcRenderer.send('timer-state', {
+        enabled: timerEnabled,
+        active: timerActive,
+        remaining: timerRemainingSeconds,
+        total: timerTotalSeconds
+    });
+    
+    updateTimerDisplay();
+}
+
+function toggleTimerEnable() {
+    timerEnabled = timerEnable.checked;
+    
+    if (timerEnabled) {
+        // Show timer content with sliding animation
+        timerContent.classList.add('enabled');
+        timerHours.disabled = false;
+        timerMinutes.disabled = false;
+        timerSeconds.disabled = false;
+    } else {
+        // Hide timer content with sliding animation
+        timerContent.classList.remove('enabled');
+        timerHours.disabled = true;
+        timerMinutes.disabled = true;
+        timerSeconds.disabled = true;
+        hideTimerSettings();
+        if (timerActive) {
+            stopTimer();
+        }
+    }
+    
+    // Send timer state to main process for CSV logging
+    ipcRenderer.send('timer-state', {
+        enabled: timerEnabled,
+        active: timerActive,
+        remaining: timerRemainingSeconds,
+        total: timerTotalSeconds
+    });
+    
+    updateTimerDisplay();
+}
+
 // Start the system
 function startSystem() {
+    // Check if timer is enabled and has valid values
+    if (timerEnabled) {
+        const inputHours = parseInt(timerHours.value) || 0;
+        const inputMinutes = parseInt(timerMinutes.value) || 0;
+        const inputSeconds = parseInt(timerSeconds.value) || 0;
+        const totalSeconds = inputHours * 3600 + inputMinutes * 60 + inputSeconds;
+        
+        if (totalSeconds <= 0) {
+            alert('Please set a valid timer duration before starting the system.');
+            return;
+        }
+    }
+    
     systemRunning = true;
     
     // Always turn on heating
@@ -663,6 +1028,11 @@ function startSystem() {
     // Explicitly set heating elements on
     ipcRenderer.send('set-heating', true);
     
+    // Start timer if enabled
+    if (timerEnabled) {
+        startTimer();
+    }
+    
     ipcRenderer.send('start-system');
     
     // Temperature and pressure monitoring is handled by the main process
@@ -679,6 +1049,9 @@ function stopSystem() {
     updateHeatingStatus(false);
     updateFanStatus(false);
     updateSteamStatus(false);
+    
+    // Stop timer
+    stopTimer();
     
     // Send stop command - main process will handle cooling simulation
     ipcRenderer.send('stop-system');
@@ -785,7 +1158,15 @@ ipcRenderer.on('recording-interval-updated', (event, interval) => {
 
 // Initialize the application
 function init() {
-    renderPresets();
+    renderPresets();    // Initialize timer
+    timerEnable.checked = false; // Start unchecked
+    toggleTimerEnable();
+    updateTimerDisplay();
+    
+    // Set initial timer values to 00:00:00
+    timerHours.value = 0;
+    timerMinutes.value = 0;
+    timerSeconds.value = 0;
     
     // Detect touch capability and show/hide instructions
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -801,9 +1182,13 @@ function init() {
             }, 1000);
         }, 5000);
     }
-    
-    // Add event listener to document to handle clicks outside context menu
+      // Add event listener to document to handle clicks outside context menu
     document.addEventListener('click', (e) => {
+        // Don't interfere with input fields
+        if (e.target.tagName === 'INPUT' || e.target.closest('.timer-settings') || e.target.closest('.modal-content')) {
+            return;
+        }
+        
         if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
             hideContextMenu();
         }
@@ -811,6 +1196,11 @@ function init() {
     
     // Add touch event listener for context menu hiding
     document.addEventListener('touchstart', (e) => {
+        // Don't interfere with input fields
+        if (e.target.tagName === 'INPUT' || e.target.closest('.timer-settings') || e.target.closest('.modal-content')) {
+            return;
+        }
+        
         if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
             hideContextMenu();
         }
@@ -923,6 +1313,7 @@ tempDisplayContainer.addEventListener('click', toggleTemperatureUnit);
 function makeRangeValueEditable(element, slider, min, max, unit = '', isTemperature = false) {
     element.addEventListener('click', function(e) {
         e.stopPropagation();
+        e.preventDefault();
         
         if (element.classList.contains('editing')) {
             return;
@@ -968,8 +1359,11 @@ function makeRangeValueEditable(element, slider, min, max, unit = '', isTemperat
         element.innerHTML = '';
         element.appendChild(input);
         
-        input.focus();
-        input.select();
+        // Ensure input gets focus
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 10);
         
         function finishEdit() {
             let newValue = parseInt(input.value);
@@ -1015,6 +1409,7 @@ function makeRangeValueEditable(element, slider, min, max, unit = '', isTemperat
         
         input.addEventListener('blur', finishEdit);
         input.addEventListener('keydown', function(e) {
+            e.stopPropagation();
             if (e.key === 'Enter') {
                 finishEdit();
             } else if (e.key === 'Escape') {
@@ -1029,6 +1424,15 @@ function makeRangeValueEditable(element, slider, min, max, unit = '', isTemperat
                     element.textContent = `${currentValue}${displayUnit}`;
                 }
             }
+        });
+        
+        // Prevent input events from bubbling and interfering with other handlers
+        input.addEventListener('input', function(e) {
+            e.stopPropagation();
+        });
+        
+        input.addEventListener('focus', function(e) {
+            e.stopPropagation();
         });
     });
 }

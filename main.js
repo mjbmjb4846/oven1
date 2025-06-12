@@ -13,6 +13,18 @@ let systemActive = false;
 let recordingActive = false;
 let firstRun = true;
 
+// Enhanced state variables for comprehensive logging
+let fanSpeed = 0;
+let steamLevel = 0;
+let heatingElementsOn = false;
+let solenoidValveOpen = false;
+let timerEnabled = false;
+let timerActive = false;
+let timerRemainingSeconds = 0;
+let timerTotalSeconds = 0;
+let sessionStartTime = new Date();
+let lastSystemStartTime = null;
+
 // Check for native modules on startup
 function checkNativeModules() {
   try {
@@ -144,6 +156,9 @@ app.whenReady().then(() => {
 
 // Initialize data recording
 function initializeDataRecording() {
+    // Load saved settings first
+    loadAppSettings();
+    
     // Setup CSV recording with default interval (5 seconds)
     control.initializeDataRecording();
     
@@ -157,6 +172,47 @@ function initializeDataRecording() {
     recordingActive = true;
 }
 
+// Load application settings
+function loadAppSettings() {
+    const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    
+    try {
+        if (fs.existsSync(settingsPath)) {
+            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            
+            // Apply CSV storage path if available
+            if (settings.csvStoragePath) {
+                // Verify the folder still exists and is accessible
+                if (fs.existsSync(settings.csvStoragePath)) {
+                    try {
+                        // Test write access
+                        const testFile = path.join(settings.csvStoragePath, '.test_write');
+                        fs.writeFileSync(testFile, 'test');
+                        fs.unlinkSync(testFile);
+                        
+                        // Path is valid, set it in control module
+                        control.setCustomStoragePath(settings.csvStoragePath);
+                        console.log(`Loaded CSV storage path: ${settings.csvStoragePath}`);
+                        
+                        // Send the path to renderer when the window is ready
+                        if (mainWindow && mainWindow.webContents) {
+                            mainWindow.webContents.once('did-finish-load', () => {
+                                mainWindow.webContents.send('storage-folder-updated', settings.csvStoragePath);
+                            });
+                        }
+                    } catch (error) {
+                        console.log(`Saved storage path is not writable, using default: ${error.message}`);
+                    }
+                } else {
+                    console.log('Saved storage path no longer exists, using default');
+                }
+            }
+        }
+    } catch (error) {
+        console.log(`Could not load settings: ${error.message}`);
+    }
+}
+
 // Start continuous temperature monitoring (separate from system control)
 function startContinuousTemperatureMonitoring() {
     if (temperatureMonitoringInterval) {
@@ -168,15 +224,23 @@ function startContinuousTemperatureMonitoring() {
         if (control.isCompatibleBoard && control.boardInfo && control.boardInfo.gpioLibrary) {
             currentTemperature = control.readTemperatureProbe();
         } else {
-            // Simulate temperature changes based on system state
+            // In development mode, provide realistic temperature simulation based on system state
             if (systemActive) {
                 // When system is active, use the full heating/cooling simulation
                 currentTemperature = control.simulateTemperatureControl(targetTemperature, currentTemperature);
             } else {
-                // When system is inactive, simulate natural cooling
-                currentTemperature = simulateNaturalCooling(currentTemperature);
-            }
-        }
+                // When system is inactive, simulate natural cooling or just show temperature with variations
+                // If temperature is above room temperature, cool down, otherwise show variations around room temp
+                if (currentTemperature > 25) {
+                    currentTemperature = simulateNaturalCooling(currentTemperature);
+                } else {
+                    // Use the probe simulation for realistic variations around room temperature
+                    currentTemperature = control.readTemperatureProbe();
+                }
+            }        }
+        
+        // Update control module with current temperature for CSV recording
+        control.updateCurrentTemperature(currentTemperature);
         
         // Always send temperature reading to renderer for chart display
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -222,35 +286,51 @@ app.on('before-quit', () => {
 });
 
 // Set up IPC communication between renderer and main processes
-function setupIPC() {
-    // Handle temperature setting
+function setupIPC() {    // Handle temperature setting
     ipcMain.on('set-temperature', (event, temp) => {
         console.log(`Setting target temperature to ${temp}°C`);
         targetTemperature = temp;
+        
+        // Update control module state
+        control.updateSystemState({ targetTemp: temp });
     });
-    
-    // Handle heating elements control
+      // Handle heating elements control
     ipcMain.on('set-heating', (event, isOn) => {
         console.log(`Setting heating elements ${isOn ? 'ON' : 'OFF'}`);
+        heatingElementsOn = isOn;
         control.setHeatingElements(isOn);
+        
+        // Update control module state
+        control.updateSystemState({ heatingElementsOn: isOn });
     });
     
     // Handle fan control
     ipcMain.on('set-fan', (event, speed) => {
         console.log(`Setting fan speed to ${speed}%`);
+        fanSpeed = speed;
         control.setFanSpeed(speed);
+        
+        // Update control module state
+        control.updateSystemState({ fanSpeed: speed });
     });
     
     // Handle solenoid valve control
     ipcMain.on('set-solenoid', (event, isOpen) => {
         console.log(`Setting solenoid valve ${isOpen ? 'OPEN' : 'CLOSED'}`);
+        solenoidValveOpen = isOpen;
         control.setSolenoidValve(isOpen);
+        
+        // Update control module state
+        control.updateSystemState({ solenoidValveOpen: isOpen });
     });
     
     // Handle steam level setting
     ipcMain.on('set-steam-level', (event, level) => {
         console.log(`Setting steam level to ${level}%`);
-        // In a more advanced implementation, this could control steam intensity
+        steamLevel = level;
+        
+        // Update control module state
+        control.updateSystemState({ steamLevel: level });
     });
     
     // Handle recording interval change
@@ -261,11 +341,16 @@ function setupIPC() {
         // Confirm the change to the renderer
         mainWindow.webContents.send('recording-interval-updated', interval);
     });
-    
-    // Handle system start
+      // Handle system start
     ipcMain.on('start-system', (event) => {
         console.log('Starting oven system');
         systemActive = true;
+        
+        // Update control module state
+        control.updateSystemState({ 
+            systemActive: true,
+            targetTemp: targetTemperature 
+        });
         
         // Note: Pressure and temperature monitoring are already running continuously
         // No need to start additional monitoring here
@@ -277,52 +362,95 @@ function setupIPC() {
         systemActive = false;
         
         // Turn off all controls but keep monitoring
+        heatingElementsOn = false;
+        fanSpeed = 0;
+        solenoidValveOpen = false;
+        steamLevel = 0;
+        
         control.setHeatingElements(false);
         control.setFanSpeed(0);
         control.setSolenoidValve(false);
+        
+        // Update control module state
+        control.updateSystemState({ 
+            systemActive: false,
+            heatingElementsOn: false,
+            fanSpeed: 0,
+            solenoidValveOpen: false,
+            steamLevel: 0
+        });
         
         // We deliberately don't stop pressure monitoring or temperature recording
         // to allow tracking as the system cools down
     });
     
-    // Handle data updates from renderer
+    // Handle timer state updates
+    ipcMain.on('timer-state', (event, timerState) => {
+        console.log('Timer state update:', timerState);
+        
+        // Update local timer state
+        if (timerState.enabled !== undefined) timerEnabled = timerState.enabled;
+        if (timerState.active !== undefined) timerActive = timerState.active;
+        if (timerState.remaining !== undefined) timerRemainingSeconds = timerState.remaining;
+        if (timerState.total !== undefined) timerTotalSeconds = timerState.total;
+        
+        // Update control module timer state
+        control.updateTimerState(timerState);
+    });
+      // Handle data updates from renderer
     ipcMain.on('update-data', (event, data) => {
         // Process any data sent from the renderer
         if (data.temperature) {
             currentTemperature = data.temperature;
         }
     });
+
+    // Handle storage folder selection
+    ipcMain.on('select-storage-folder', (event) => {
+        const result = dialog.showOpenDialogSync(mainWindow, {
+            title: 'Select CSV Storage Folder',
+            properties: ['openDirectory', 'createDirectory'],
+            buttonLabel: 'Select Folder'
+        });
+
+        if (result && result.length > 0) {
+            const selectedPath = result[0];
+            
+            // Store the selected path in app settings
+            app.getPath('userData');
+            const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+            
+            let settings = {};
+            try {
+                if (fs.existsSync(settingsPath)) {
+                    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                }
+            } catch (error) {
+                console.log('Could not read settings file, using defaults');
+                settings = {};
+            }
+            
+            settings.csvStoragePath = selectedPath;
+            
+            try {
+                fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+                console.log(`CSV storage folder set to: ${selectedPath}`);
+                
+                // Update control module with new path
+                control.setCustomStoragePath(selectedPath);
+                
+                // Notify renderer of the update
+                mainWindow.webContents.send('storage-folder-updated', selectedPath);
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                dialog.showErrorBox('Settings Error', 'Failed to save the selected folder path.');
+            }
+        }
+    });
 }
 
 // Continuous temperature monitoring (regardless of system state)
 let temperatureMonitoringInterval = null;
-
-function startContinuousTemperatureMonitoring() {
-    if (temperatureMonitoringInterval) {
-        clearInterval(temperatureMonitoringInterval);
-    }
-    
-    temperatureMonitoringInterval = setInterval(() => {
-        // Get temperature from probe if on compatible board, otherwise simulate
-        if (control.isCompatibleBoard && control.boardInfo && control.boardInfo.gpioLibrary) {
-            currentTemperature = control.readTemperatureProbe();
-        } else {
-            // Simulate temperature changes based on system state
-            if (systemActive) {
-                // When system is active, use the full heating/cooling simulation
-                currentTemperature = control.simulateTemperatureControl(targetTemperature, currentTemperature);
-            } else {
-                // When system is inactive, simulate natural cooling
-                currentTemperature = simulateNaturalCooling(currentTemperature);
-            }
-        }
-        
-        // Always send temperature reading to renderer for chart display
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('temperature-reading', currentTemperature);
-        }
-    }, 1000);
-}
 
 function simulateNaturalCooling(currentTemp) {
     const roomTemp = 25; // Room temperature baseline

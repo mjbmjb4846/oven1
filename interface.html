@@ -78,10 +78,16 @@
                 <div class="recording-control">
                     <label for="recording-interval">Recording Interval (sec):</label>
                     <input type="number" id="recording-interval" min="1" value="5">
-                </div>
-                <div class="recording-status">
-                    <div class="indicator"></div>
-                    <span id="recording-status-text">Not recording</span>
+                </div>                <div class="recording-status">
+                    <div class="recording-text">
+                        <div class="indicator"></div>
+                        <span id="recording-status-text">Not recording</span>
+                    </div>
+                    <button class="folder-button" id="storage-folder-btn" title="Select storage folder for CSV files">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="folder-icon" viewBox="0 0 512 512">
+                            <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+                        </svg>
+                    </button>
                 </div>
                 <div class="control-item">
                     <span><span class="status-indicator" id="heating-status"></span>Heating</span>
@@ -90,14 +96,59 @@
                 <div class="control-item">
                     <span><span class="status-indicator" id="fan-status"></span>Fan</span>
                     <span id="fan-state">OFF</span>
-                </div>
-                <div class="control-item">
+                </div>                <div class="control-item">
                     <span><span class="status-indicator" id="steam-status"></span>Steam</span>
                     <span id="steam-state">OFF</span>
-                </div>
-                <div class="control-item" style="justify-content: center; margin-top: 15px;">
-                    <button class="button primary" id="start-btn">Start</button>
-                    <button class="button danger" id="stop-btn">Stop</button>
+                </div>                <!-- Timer Control Interface -->
+                <div class="control-group timer-control-group">
+                    <h3>Oven Control</h3>
+                    
+                    <!-- Timer Control Grid - Always visible -->
+                    <div class="timer-control-grid">
+                        <div class="timer-grid-item">
+                            <span class="timer-grid-label">Enable Timer</span>
+                            <label class="switch">
+                                <input type="checkbox" id="timer-enable">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="timer-grid-item">
+                            <button class="button primary timer-grid-btn" id="start-btn">Start</button>
+                        </div>
+                        
+                        <div class="timer-grid-item">
+                            <button class="button danger timer-grid-btn" id="stop-btn">Stop</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Timer Content - Slides down when enabled -->
+                    <div class="timer-content" id="timer-content">
+                        <!-- Timer Display - Clickable to set time -->
+                        <div class="timer-display-container">
+                            <div class="timer-display" id="timer-display" title="Click to set time">00:00:00</div>
+                        </div>
+                        
+                        <!-- Timer Settings Dropdown (hidden by default) -->
+                        <div class="timer-settings" id="timer-settings" style="display: none;">
+                            <div class="timer-input-group">
+                                <label>Hours:</label>
+                                <input type="number" id="timer-hours" min="0" max="23" value="0">
+                            </div>
+                            <div class="timer-input-group">
+                                <label>Minutes:</label>
+                                <input type="number" id="timer-minutes" min="0" max="59" value="0">
+                            </div>
+                            <div class="timer-input-group">
+                                <label>Seconds:</label>
+                                <input type="number" id="timer-seconds" min="0" max="59" value="0">
+                            </div>
+                            <div class="timer-settings-buttons">
+                                <button class="button" id="timer-set-btn">Set</button>
+                                <button class="button secondary" id="timer-cancel-btn">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

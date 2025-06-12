@@ -85,6 +85,7 @@ h1, h2, h3 {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  -webkit-user-select: none;
   user-select: none;
   /* Prevent text highlighting on touch */
   -webkit-touch-callout: none;
@@ -426,6 +427,13 @@ input:checked + .slider:before {
   margin-top: 2px;
 }
 
+/* Timer info in preset descriptions */
+.preset-desc .timer-info {
+  color: var(--primary-color);
+  font-weight: 500;
+  opacity: 0.9;
+}
+
 /* Simulation indicator */
 .simulation-indicator {
   position: fixed;
@@ -464,9 +472,16 @@ input:checked + .slider:before {
 
 .recording-status {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   font-size: 0.9rem;
   color: var(--secondary-color);
+}
+
+.recording-status .recording-text {
+  display: flex;
+  align-items: center;
+  flex: 1;
 }
 
 .recording-status .indicator {
@@ -476,6 +491,63 @@ input:checked + .slider:before {
   background-color: #2ecc71;
   margin-right: 5px;
   animation: pulse 2s infinite;
+}
+
+.folder-button {
+  background: none;
+  border: 1px solid rgba(69, 123, 157, 0.3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--secondary-color);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 28px;
+}
+
+.folder-button .folder-icon {
+  width: 16px;
+  height: 16px;
+  stroke: var(--secondary-color);
+  transition: stroke 0.2s ease;
+}
+
+.folder-button:hover {
+  background-color: rgba(69, 123, 157, 0.1);
+  border-color: var(--secondary-color);
+  transform: translateY(-1px);
+}
+
+.folder-button:hover .folder-icon {
+  stroke: var(--secondary-color);
+}
+
+.folder-button:active {
+  transform: translateY(0);
+  background-color: rgba(69, 123, 157, 0.2);
+}
+
+.folder-button:active .folder-icon {
+  stroke: var(--secondary-color);
+}
+
+/* Touch-specific folder button improvements */
+@media (pointer: coarse) {
+  .folder-button {
+    min-width: 40px;
+    min-height: 36px;
+    font-size: 1.2rem;
+    padding: 6px 10px;
+  }
+  
+  .folder-button .folder-icon {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 @keyframes pulse {
@@ -1110,5 +1182,332 @@ input:checked + .slider:before {
   
   .context-menu-item:active {
     background-color: rgba(69, 123, 157, 0.2);
+  }
+}
+
+/* Timer Control Styles */
+.timer-control-group {
+  background-color: rgba(25, 118, 210, 0.08);
+  border: 1px solid rgba(25, 118, 210, 0.2);
+}
+
+/* Timer Control Grid - Always visible */
+.timer-control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.timer-grid-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.timer-grid-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-color);
+  text-align: center;
+}
+
+.timer-grid-btn {
+  width: 100%;
+  min-height: 45px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* Timer Content - Slides down when enabled */
+.timer-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease-in-out, opacity 0.3s ease-in-out;
+  opacity: 0;
+}
+
+.timer-content.enabled {
+  max-height: 400px; /* Sufficient height for all content */
+  opacity: 1;
+}
+
+.timer-display-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-top: 15px; /* Add some spacing when sliding down */
+}
+
+.timer-display {
+  font-size: 3rem;
+  font-weight: bold;
+  color: var(--primary-color);
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  min-width: 220px; /* Wider for HH:MM:SS format */
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 15px 25px;
+  border-radius: var(--border-radius);  border: 2px solid rgba(25, 118, 210, 0.2);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.timer-display:hover {
+  background-color: rgba(25, 118, 210, 0.1);
+  border-color: rgba(25, 118, 210, 0.4);
+  transform: translateY(-1px);
+}
+
+.timer-display:active {
+  transform: translateY(0);
+}
+
+
+/* Timer Settings Dropdown */
+.timer-settings {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(25, 118, 210, 0.3);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  margin-top: 15px;
+  animation: slideDown 0.3s ease;
+}
+
+.timer-input-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.timer-input-group label {
+  font-weight: 500;
+  color: var(--text-color);
+  min-width: 60px;
+}
+
+.timer-input-group input {
+  width: 80px;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.timer-input-group input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+}
+
+.timer-settings-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.timer-settings-buttons .button {
+  min-width: 80px;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.timer-control-group.disabled {
+  opacity: 0.6;
+}
+
+.timer-control-group.disabled .timer-display {
+  color: #999;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-color: #ddd;
+  cursor: not-allowed;
+}
+
+.timer-control-group.disabled .timer-display:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+  border-color: #ddd;
+  transform: none;
+}
+
+.timer-control-group.disabled .timer-input-group input {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* Timer running state */
+.timer-display.running {
+  background-color: rgba(76, 175, 80, 0.1);
+  border-color: #4caf50;
+  color: #4caf50;
+  animation: pulse-timer 2s infinite;
+}
+
+.timer-display.warning {
+  background-color: rgba(255, 152, 0, 0.1);
+  border-color: #ff9800;
+  color: #ff9800;
+  animation: pulse-timer 1s infinite;
+}
+
+.timer-display.critical {
+  background-color: rgba(244, 67, 54, 0.1);
+  border-color: #f44336;
+  color: #f44336;
+  animation: pulse-timer 0.5s infinite;
+}
+
+@keyframes pulse-timer {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+/* Touch-specific timer improvements */
+@media (pointer: coarse) {
+  .timer-display {
+    padding: 20px 30px;
+    font-size: 2.8rem;
+  }
+  
+  .timer-grid-btn {
+    min-height: 50px;
+    font-size: 1.1rem;
+  }
+  
+  .timer-input-group input {
+    padding: 12px 15px;
+    font-size: 1.1rem;
+    width: 90px;
+  }
+  
+  .timer-control-grid {
+    gap: 20px;
+  }
+  
+  .timer-settings {
+    padding: 25px;
+  }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .timer-control-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .timer-grid-item {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  
+  .timer-grid-btn {
+    min-width: 120px;
+    width: auto;
+  }
+}
+
+/* Input Field Protection - Ensure proper text input behavior */
+input[type="text"],
+input[type="number"],
+.range-value-input {
+  /* Ensure proper pointer events and text selection */
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  
+  /* Prevent touch interference */
+  -webkit-touch-callout: default !important;
+  -webkit-tap-highlight-color: rgba(25, 118, 210, 0.2) !important;
+  
+  /* Ensure proper focus styling */
+  outline: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 1rem;
+  background-color: white;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+.range-value-input:focus {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
+  background-color: white !important;
+}
+
+/* Specific protection for timer inputs */
+#timer-hours,
+#timer-minutes,
+#timer-seconds {
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* Specific protection for modal inputs */
+#preset-name,
+#preset-description {
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* Specific protection for recording interval input */
+#recording-interval {
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* Touch-specific input improvements */
+@media (pointer: coarse) {
+  input[type="text"],
+  input[type="number"],
+  .range-value-input {
+    min-height: 44px;
+    font-size: 1.1rem;
+    padding: 12px 15px;
+    /* Stronger touch protection */
+    -webkit-tap-highlight-color: rgba(25, 118, 210, 0.3) !important;
+  }
+  
+  /* Larger touch targets for timer inputs */
+  #timer-hours,
+  #timer-minutes,
+  #timer-seconds {
+    width: 90px;
+    min-height: 48px;
+    font-size: 1.2rem;
   }
 }
