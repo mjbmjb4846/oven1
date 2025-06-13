@@ -48,6 +48,9 @@ const contextMenu = document.getElementById('context-menu');
 const editPresetOption = document.getElementById('edit-preset');
 const deletePresetOption = document.getElementById('delete-preset');
 const presetModal = document.getElementById('preset-modal');
+
+// Settings Menu DOM Elements
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const modalTitle = document.getElementById('modal-title');
 const presetNameInput = document.getElementById('preset-name');
 const presetDescriptionInput = document.getElementById('preset-description');
@@ -1155,6 +1158,73 @@ ipcRenderer.on('recording-data', (event, data) => {
 ipcRenderer.on('recording-interval-updated', (event, interval) => {
     recordingInterval.value = interval;
 });
+
+// Theme Management
+const themes = ['default', 'dark-theme', 'msu-theme'];
+let currentThemeIndex = 0;
+
+// Load saved theme on startup
+function loadSavedTheme() {
+    const savedTheme = localStorage.getItem('selected-theme');
+    if (savedTheme && themes.includes(savedTheme)) {
+        const themeIndex = themes.indexOf(savedTheme);
+        currentThemeIndex = themeIndex;
+        applyTheme(savedTheme);
+    }
+}
+
+// Apply theme to body
+function applyTheme(theme) {
+    // Remove all theme classes
+    document.body.classList.remove(...themes.slice(1)); // Skip 'default'
+    
+    // Add new theme class (if not default)
+    if (theme !== 'default') {
+        document.body.classList.add(theme);
+    }
+    
+    // Update button text based on current theme
+    updateThemeButtonText();
+    
+    // Save theme preference
+    localStorage.setItem('selected-theme', theme);
+}
+
+// Update theme button text
+function updateThemeButtonText() {
+    const currentTheme = themes[currentThemeIndex];
+    switch (currentTheme) {
+        case 'default':
+            themeToggleBtn.textContent = 'Light';
+            break;
+        case 'dark-theme':
+            themeToggleBtn.textContent = 'Dark';
+            break;
+        case 'msu-theme':
+            themeToggleBtn.textContent = 'MSU';
+            break;
+    }
+}
+
+// Theme toggle functionality
+function toggleTheme() {
+    currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+    const newTheme = themes[currentThemeIndex];
+    applyTheme(newTheme);
+}
+
+// Event listener for theme toggle button
+if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', toggleTheme);
+}
+
+// Initialize theme on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadSavedTheme();
+});
+
+// Also call loadSavedTheme immediately in case DOMContentLoaded already fired
+loadSavedTheme();
 
 // Initialize the application
 function init() {
