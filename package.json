@@ -50,7 +50,7 @@
   },
   "build": {
     "appId": "com.rpi.ovencontrol",
-    "productName": "RPi Oven Control",
+    "productName": "RPi-Oven-Control",
     "directories": {
       "output": "dist"
     },

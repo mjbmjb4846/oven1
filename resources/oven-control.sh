@@ -13,7 +13,7 @@ export XAUTHORITY="$HOME/.Xauthority"
 mkdir -p "$HOME/Downloads"
 
 # Run the application with needed permissions
-sudo /opt/RPi\ Oven\ Control/oven-control --no-sandbox "$@"
+sudo /opt/RPi-Oven-Control/oven-control "$@"
 
 # Clean up X server access
 xhost -local:root

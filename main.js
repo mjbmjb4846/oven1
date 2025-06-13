@@ -71,7 +71,11 @@ function createWindow(filePath, width, height) {
         height: height || undefined,
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false
+            contextIsolation: false,
+            sandbox: false,
+            // webSecurity: false,  // Disable web security for local development
+            // allowRunningInsecureContent: true,  // Allow local content
+            // experimentalFeatures: true  // Enable experimental web features
         },
         autoHideMenuBar: true,
         menuBarVisible: false,
@@ -94,6 +98,23 @@ function createWindow(filePath, width, height) {
 
     win.loadFile(filePath);
     return win;
+}
+
+// Disable sandbox for Linux/ARM compatibility
+if (process.platform === 'linux') {
+    app.commandLine.appendSwitch('--no-sandbox');
+    app.commandLine.appendSwitch('--disable-setuid-sandbox');
+    app.commandLine.appendSwitch('--disable-dev-shm-usage');
+    app.commandLine.appendSwitch('--disable-gpu-sandbox');
+    
+    // Specifically for ARM devices - additional compatibility flags
+    // if (process.arch === 'arm' || process.arch === 'arm64') {
+    //     app.commandLine.appendSwitch('--disable-gpu');
+    //     app.commandLine.appendSwitch('--disable-gpu-compositing');
+    //     app.commandLine.appendSwitch('--disable-software-rasterizer');
+    //     app.commandLine.appendSwitch('--disable-features=VizDisplayCompositor');
+    //     app.commandLine.appendSwitch('--use-gl=swiftshader');
+    // }
 }
 
 // Initialize the application
