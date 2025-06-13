@@ -18,6 +18,16 @@ const boardInfo = {
 function detectBoardType() {
   if (process.platform !== 'linux') {
     console.log('Not running on Linux, assuming development mode');
+    if (process.platform === 'win32') {
+      boardInfo.type = 'windows-pc';
+      boardInfo.model = 'Windows PC';
+      return 'windows-pc';
+    }
+    if (process.platform === 'darwin') {
+      boardInfo.type = 'apple-device';
+      boardInfo.model = 'Apple Mac';
+      return 'apple-device';
+    }
     return 'unknown';
   }
 
@@ -58,6 +68,14 @@ function detectBoardType() {
       boardInfo.model = 'Generic ARM SBC';
       return 'generic-arm';
     }
+
+    if (process.arch === 'x64' || process.arch === 'amd64') {
+      console.log('Running on x86_64 Linux, assuming development mode');
+      boardInfo.type = 'linux-pc';
+      boardInfo.model = 'Linux PC';
+      return 'linux-pc';
+    }
+    
   } catch (error) {
     console.error('Error detecting board type:', error);
   }
@@ -92,6 +110,30 @@ const PIN_MAPPINGS = {
     TEMP_PROBE: 4
   },
   'unknown': {
+    // Simulation mode - pin values don't matter
+    FAN_CONTROL: 17,
+    HEATING_ELEMENTS: [22, 23, 24],
+    SOLENOID_VALVE: 18,
+    PRESSURE_SENSOR: 25,
+    TEMP_PROBE: 4
+  },
+  'windows-pc': {
+    // Simulation mode - pin values don't matter
+    FAN_CONTROL: 17,
+    HEATING_ELEMENTS: [22, 23, 24],
+    SOLENOID_VALVE: 18,
+    PRESSURE_SENSOR: 25,
+    TEMP_PROBE: 4
+  },
+  'linux-pc': {
+    // Simulation mode - pin values don't matter
+    FAN_CONTROL: 17,
+    HEATING_ELEMENTS: [22, 23, 24],
+    SOLENOID_VALVE: 18,
+    PRESSURE_SENSOR: 25,
+    TEMP_PROBE: 4
+  },
+  'apple-device': {
     // Simulation mode - pin values don't matter
     FAN_CONTROL: 17,
     HEATING_ELEMENTS: [22, 23, 24],
@@ -148,7 +190,7 @@ let pressureSensor = null;
 let tempProbe = null;
 
 // Check if running on a supported board
-const isCompatibleBoard = boardInfo.type !== 'unknown';
+const isCompatibleBoard = boardInfo.type !== 'unknown' && boardInfo.type !== 'windows-pc' && boardInfo.type !== 'apple-device' && boardInfo.type !== 'linux-pc';
 
 // GPIO module - will be dynamically loaded
 let gpio = null;
