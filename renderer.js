@@ -1195,13 +1195,13 @@ function updateThemeButtonText() {
     const currentTheme = themes[currentThemeIndex];
     switch (currentTheme) {
         case 'default':
-            themeToggleBtn.textContent = 'Light';
+            themeToggleBtn.textContent = 'Theme: Light';
             break;
         case 'dark-theme':
-            themeToggleBtn.textContent = 'Dark';
+            themeToggleBtn.textContent = 'Theme: Dark';
             break;
         case 'msu-theme':
-            themeToggleBtn.textContent = 'MSU';
+            themeToggleBtn.textContent = 'Theme: MSU';
             break;
     }
 }

@@ -39,10 +39,10 @@
     "electron-rebuild": "^3.2.9"
   },
   "dependencies": {
+    "@serialport/parser-readline": "^13.0.0",
     "onoff": "^6.0.3",
     "rpio": "^2.4.2",
-    "node-orange-pi-gpio": "^1.0.0",
-    "wiring-op": "^1.0.0"
+    "serialport": "^13.0.0"
   },
   "optionalDependencies": {
     "node-orange-pi-gpio": "^1.0.0",
