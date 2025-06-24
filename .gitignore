@@ -157,6 +157,7 @@ recordings/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+.hintrc
 
 # Project specific backup files
 *.bak
